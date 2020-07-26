@@ -2,12 +2,10 @@ import pytest
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
-from agora.error import AccountExistsError, BadNonceError, \
-    DestinationDoesNotExistError, InsufficientBalanceError, InsufficientFeeError, \
-    InvalidSignatureError, SenderDoesNotExistError, TransactionError, \
-    TransactionMalformedError, InvoiceErrorReason, TransactionResultErrors, Error
-from tests.utils import gen_create_op_result, gen_payment_op_result, \
-    gen_merge_op_result, gen_result_xdr
+from agora.error import AccountExistsError, BadNonceError, DestinationDoesNotExistError, InsufficientBalanceError, \
+    InsufficientFeeError, InvalidSignatureError, SenderDoesNotExistError, TransactionError, TransactionMalformedError, \
+    InvoiceErrorReason, Error, StellarTransactionError
+from tests.utils import gen_create_op_result, gen_payment_op_result, gen_merge_op_result, gen_result_xdr
 
 
 class TestExceptions(object):
@@ -30,17 +28,17 @@ class TestExceptions(object):
         assert actual == expected
 
 
-class TestTransactionResultError(object):
+class TestStellarTransactionError(object):
     def test_from_result_success(self):
         op_result = gen_create_op_result(xdr_const.CREATE_ACCOUNT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result] if op_result else [])
-        tre = TransactionResultErrors.from_result(result_xdr)
+        tre = StellarTransactionError.from_result(result_xdr)
         assert not tre.tx_error
         assert not tre.op_errors
 
         op_result = gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result] if op_result else [])
-        tre = TransactionResultErrors.from_result(result_xdr)
+        tre = StellarTransactionError.from_result(result_xdr)
         assert not tre.tx_error
         assert not tre.op_errors
 
@@ -77,7 +75,7 @@ class TestTransactionResultError(object):
 
         result_xdr = gen_result_xdr(tx_result_code, [op_result] if op_result else [])
 
-        tre = TransactionResultErrors.from_result(result_xdr)
+        tre = StellarTransactionError.from_result(result_xdr)
         assert isinstance(tre.tx_error, TransactionError)
         assert isinstance(tre.op_errors[0], op_error_type)
 
@@ -100,13 +98,13 @@ class TestTransactionResultError(object):
         self, tx_result_code: int, exception_type: type
     ):
         result_xdr = gen_result_xdr(tx_result_code, [])
-        assert isinstance(TransactionResultErrors.from_result(result_xdr).tx_error, exception_type)
+        assert isinstance(StellarTransactionError.from_result(result_xdr).tx_error, exception_type)
 
     def test_error_from_result_other_op(self):
         op_result = gen_merge_op_result(xdr_const.ACCOUNT_MERGE_MALFORMED)
         result_xdr = gen_result_xdr(xdr_const.txFAILED, [op_result])
 
-        tre = TransactionResultErrors.from_result(result_xdr)
+        tre = StellarTransactionError.from_result(result_xdr)
         assert isinstance(tre.tx_error, TransactionError)
         assert isinstance(tre.op_errors[0], Error)
 
@@ -119,7 +117,7 @@ class TestTransactionResultError(object):
 
         result_xdr = gen_result_xdr(xdr_const.txFAILED, op_results)
 
-        tre = TransactionResultErrors.from_result(result_xdr)
+        tre = StellarTransactionError.from_result(result_xdr)
         assert isinstance(tre.tx_error, TransactionError)
         assert not tre.op_errors[0]
         assert isinstance(tre.op_errors[1], TransactionMalformedError)
