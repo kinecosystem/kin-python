@@ -9,7 +9,6 @@ from agoraapi.common.v3 import model_pb2
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb, transaction_service_pb2_grpc as tx_pb_grpc
 
 from agora.client.environment import Environment
-from agora.client.stellar.account import StellarAccountInfo
 from agora.client.utils import public_key_to_address, quarks_to_kin_str
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, \
@@ -393,7 +392,7 @@ class Client(BaseClient):
         if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
             raise AccountExistsError()
 
-    def _get_stellar_account_info(self, public_key: bytes) -> StellarAccountInfo:
+    def _get_stellar_account_info(self, public_key: bytes) -> account_pb.AccountInfo:
         """Requests account info from Agora for a Stellar account.
 
         :param public_key: The public key, in raw bytes, of the account to request the info for.
@@ -407,10 +406,7 @@ class Client(BaseClient):
         if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
             raise AccountNotFoundError
 
-        return StellarAccountInfo(
-            balance=resp.account_info.balance,
-            sequence=resp.account_info.sequence_number
-        )
+        return resp.account_info
 
     def _get_stellar_builder(self, source: bytes) -> kin_base.Builder:
         """Returns a Stellar transaction builder.
@@ -424,7 +420,7 @@ class Client(BaseClient):
         return kin_base.Builder(self._horizon, self.network_name,
                                 0 if self.whitelist_kp else 100,
                                 kp.seed().decode(),
-                                sequence=source_info.sequence + 1)
+                                sequence=source_info.sequence_number + 1)
 
     def _submit_stellar_transaction(
         self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None
