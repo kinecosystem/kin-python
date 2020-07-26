@@ -3,8 +3,8 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
 from agora.error import AccountExistsError, BadNonceError, DestinationDoesNotExistError, InsufficientBalanceError, \
-    InsufficientFeeError, InvalidSignatureError, SenderDoesNotExistError, TransactionError, TransactionMalformedError, \
-    InvoiceErrorReason, Error, StellarTransactionError
+    InsufficientFeeError, InvalidSignatureError, SenderDoesNotExistError, TransactionMalformedError, \
+    InvoiceErrorReason, Error, TransactionError
 from tests.utils import gen_create_op_result, gen_payment_op_result, gen_merge_op_result, gen_result_xdr
 
 
@@ -28,19 +28,11 @@ class TestExceptions(object):
         assert actual == expected
 
 
-class TestStellarTransactionError(object):
+class TestTransactionError(object):
     def test_from_result_success(self):
         op_result = gen_create_op_result(xdr_const.CREATE_ACCOUNT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result] if op_result else [])
-        tre = StellarTransactionError.from_result(result_xdr)
-        assert not tre.tx_error
-        assert not tre.op_errors
-
-        op_result = gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)
-        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result] if op_result else [])
-        tre = StellarTransactionError.from_result(result_xdr)
-        assert not tre.tx_error
-        assert not tre.op_errors
+        assert not TransactionError.from_result(result_xdr)
 
     @pytest.mark.parametrize(
         "tx_result_code, op_type, op_result_code, op_error_type",
@@ -54,6 +46,7 @@ class TestStellarTransactionError(object):
             (xdr_const.txFAILED, xdr_const.CREATE_ACCOUNT, xdr_const.CREATE_ACCOUNT_ALREADY_EXIST, AccountExistsError),
             (xdr_const.txFAILED, xdr_const.CREATE_ACCOUNT, xdr_const.CREATE_ACCOUNT_LOW_RESERVE, Error),
             # tx with failed result code with payment op failures
+            (xdr_const.txFAILED, xdr_const.PAYMENT, xdr_const.PAYMENT_SUCCESS, type(None)),
             (xdr_const.txFAILED, xdr_const.PAYMENT, xdr_const.PAYMENT_MALFORMED, TransactionMalformedError),
             (xdr_const.txFAILED, xdr_const.PAYMENT, xdr_const.PAYMENT_UNDERFUNDED, InsufficientBalanceError),
             (xdr_const.txFAILED, xdr_const.PAYMENT, xdr_const.PAYMENT_SRC_NOT_AUTHORIZED, InvalidSignatureError),
@@ -75,9 +68,9 @@ class TestStellarTransactionError(object):
 
         result_xdr = gen_result_xdr(tx_result_code, [op_result] if op_result else [])
 
-        tre = StellarTransactionError.from_result(result_xdr)
-        assert isinstance(tre.tx_error, TransactionError)
-        assert isinstance(tre.op_errors[0], op_error_type)
+        te = TransactionError.from_result(result_xdr)
+        assert isinstance(te.tx_error, Error)
+        assert isinstance(te.op_errors[0], op_error_type)
 
     @pytest.mark.parametrize(
         "tx_result_code, exception_type",
@@ -89,24 +82,24 @@ class TestStellarTransactionError(object):
             (xdr_const.txNO_ACCOUNT, SenderDoesNotExistError),
             (xdr_const.txINSUFFICIENT_FEE, InsufficientFeeError),
             (xdr_const.txBAD_AUTH_EXTRA, InvalidSignatureError),
-            (xdr_const.txTOO_EARLY, TransactionError),
-            (xdr_const.txTOO_LATE, TransactionError),
-            (xdr_const.txINTERNAL_ERROR, TransactionError),
+            (xdr_const.txTOO_EARLY, Error),
+            (xdr_const.txTOO_LATE, Error),
+            (xdr_const.txINTERNAL_ERROR, Error),
         ]
     )
     def test_error_from_result_no_op(
         self, tx_result_code: int, exception_type: type
     ):
         result_xdr = gen_result_xdr(tx_result_code, [])
-        assert isinstance(StellarTransactionError.from_result(result_xdr).tx_error, exception_type)
+        assert isinstance(TransactionError.from_result(result_xdr).tx_error, exception_type)
 
     def test_error_from_result_other_op(self):
         op_result = gen_merge_op_result(xdr_const.ACCOUNT_MERGE_MALFORMED)
         result_xdr = gen_result_xdr(xdr_const.txFAILED, [op_result])
 
-        tre = StellarTransactionError.from_result(result_xdr)
-        assert isinstance(tre.tx_error, TransactionError)
-        assert isinstance(tre.op_errors[0], Error)
+        te = TransactionError.from_result(result_xdr)
+        assert isinstance(te.tx_error, Error)
+        assert isinstance(te.op_errors[0], Error)
 
     def test_error_from_result_multi_op(self):
         op_results = [
@@ -117,8 +110,8 @@ class TestStellarTransactionError(object):
 
         result_xdr = gen_result_xdr(xdr_const.txFAILED, op_results)
 
-        tre = StellarTransactionError.from_result(result_xdr)
-        assert isinstance(tre.tx_error, TransactionError)
-        assert not tre.op_errors[0]
-        assert isinstance(tre.op_errors[1], TransactionMalformedError)
-        assert isinstance(tre.op_errors[2], InsufficientBalanceError)
+        te = TransactionError.from_result(result_xdr)
+        assert isinstance(te.tx_error, Error)
+        assert not te.op_errors[0]
+        assert isinstance(te.op_errors[1], TransactionMalformedError)
+        assert isinstance(te.op_errors[2], InsufficientBalanceError)

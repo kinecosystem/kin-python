@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from typing import List, Tuple, Optional, Callable
+from typing import List, Optional, Callable
 
 import grpc
 import kin_base
@@ -13,13 +13,13 @@ from agora.client.utils import public_key_to_address, quarks_to_kin_str
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, \
     DestinationDoesNotExistError, InsufficientBalanceError, InsufficientFeeError, BadNonceError, OperationInvoiceError, \
-    TransactionRejectedError, StellarTransactionError
+    TransactionRejectedError, TransactionError, Error
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.result import BatchEarnResult, EarnResult
-from agora.model.transaction import TransactionState, TransactionData
+from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy, Strategy
@@ -88,12 +88,11 @@ class BaseClient(object):
         """
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement create_account")
 
-    def get_transaction(self, tx_hash: bytes) -> Tuple[TransactionState, Optional[TransactionData]]:
+    def get_transaction(self, tx_hash: bytes) -> TransactionData:
         """Retrieves a transaction.
 
         :param tx_hash: The hash of the transaction to retrieve
-        :return: a tuple of :class:`TransactionState <agora.transaction.TransactionState>` and
-            :class:`TransactionData <agora.transaction.TransactionData>` if transaction data is available.
+        :return: a :class:`TransactionData <agora.transaction.TransactionData>` object.
         """
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement get_transaction")
 
@@ -213,14 +212,17 @@ class Client(BaseClient):
 
         retry(self.retry_strategies, self._create_stellar_account, private_key=private_key)
 
-    def get_transaction(self, tx_hash: bytes) -> Tuple[TransactionState, Optional[TransactionData]]:
+    def get_transaction(self, tx_hash: bytes) -> TransactionData:
         resp = self.transaction_stub.GetTransaction(tx_pb.GetTransactionRequest(
             transaction_hash=model_pb2.TransactionHash(
                 value=tx_hash
             )
         ), timeout=_GRPC_TIMEOUT)
-        return (TransactionState.from_proto(resp.state),
-                TransactionData.from_proto(resp.item) if resp.item.hash.value else None)
+
+        if resp.state in [tx_pb.GetTransactionResponse.State.SUCCESS, tx_pb.GetTransactionResponse.State.FAILED]:
+            return TransactionData.from_proto(resp.item)
+
+        raise Error("Unexpected transaction state from Agora: %d", resp.state)
 
     def get_balance(self, public_key: bytes) -> int:
         if self._kin_version not in _SUPPORTED_VERSIONS:
@@ -370,7 +372,7 @@ class Client(BaseClient):
             tx_hash = self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()),
                                                        InvoiceList(invoices) if invoices else None)
             return [EarnResult(earn, tx_hash=tx_hash) for earn in earns]
-        except StellarTransactionError as e:
+        except TransactionError as e:
             return [EarnResult(earn, tx_hash=tx_hash, error=e.op_errors[idx] if e.op_errors else e.tx_error)
                     for idx, earn in enumerate(earns)]
         except InvoiceError as e:
@@ -452,7 +454,7 @@ class Client(BaseClient):
                 ])
 
             if resp.result != tx_pb.SubmitTransactionResponse.Result.OK:
-                raise StellarTransactionError.from_result(resp.result_xdr)
+                raise TransactionError.from_result(resp.result_xdr)
 
             return resp.hash.value
 
@@ -493,7 +495,7 @@ class Client(BaseClient):
         if not retry_strategies:
             return False
 
-        if isinstance(e, StellarTransactionError):
+        if isinstance(e, TransactionError):
             for s in retry_strategies:
                 if not s.should_retry(attempt, e.tx_error):
                     return False
