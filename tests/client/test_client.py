@@ -15,7 +15,7 @@ from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
 from agora.client.client import Client, RetryConfig, BaseClient
 from agora.client.environment import Environment
-from agora.client.utils import kin_to_quarks, quarks_to_kin
+from agora.client.utils import kin_str_to_quarks, quarks_to_kin_str
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     InsufficientBalanceError, DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
     TransactionRejectedError, TransactionError, Error
@@ -981,7 +981,7 @@ class TestAgoraClient(object):
 
     @staticmethod
     def _set_successful_get_account_info_response(
-        channel: grpc_testing.Channel, kp: kin_base.Keypair, sequence: int, balance: int = kin_to_quarks(1000)
+        channel: grpc_testing.Channel, kp: kin_base.Keypair, sequence: int, balance: int = kin_str_to_quarks("1000")
     ) -> account_pb.GetAccountInfoRequest:
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.OK,
@@ -1031,7 +1031,7 @@ class TestAgoraClient(object):
             assert isinstance(op, operation.Payment)
             assert op.source == kin_base.Keypair.from_raw_seed(payment.sender).address().decode()
             assert op.destination == kin_base.Keypair(ed25519.VerifyingKey(payment.destination)).address().decode()
-            assert float(op.amount) == quarks_to_kin(payment.quarks)
+            assert op.amount == quarks_to_kin_str(payment.quarks)
 
     @staticmethod
     def _assert_earn_batch_envelope(
@@ -1050,7 +1050,7 @@ class TestAgoraClient(object):
             assert isinstance(op, operation.Payment)
             assert op.source == sender.address().decode()
             assert op.destination == kin_base.Keypair(ed25519.VerifyingKey(earn.destination)).address().decode()
-            assert float(op.amount) == quarks_to_kin(earn.quarks)
+            assert op.amount == quarks_to_kin_str(earn.quarks)
 
     @staticmethod
     def _assert_envelope_properties(
