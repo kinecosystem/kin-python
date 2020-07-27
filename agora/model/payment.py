@@ -15,7 +15,7 @@ class Payment(object):
 
     :param sender: The secret seed, in raw bytes, of the account from which funds will be sent.
     :param destination: The public key, in raw bytes, of the account to which funds will be sent.
-    :param payment_type: The :class:`TransactionType <agora.transaction_type.TransactionType>` of this payment.
+    :param payment_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this payment.
     :param quarks: The amount being sent.
     :param source: (optional) The secret seed, in raw bytes, of the account that will act as the source of the
         transaction. If unset, the sender will be used as the transaction source.
@@ -23,8 +23,8 @@ class Payment(object):
         On Stellar, this is where the transaction fee and sequence number is taken/chosen from.
 
         On Solana, this is where the fee is taken from.
-    :param invoice: (optional) An :class:`Invoice <agora.invoice.Invoice>` to associate with this payment. Only one of
-        invoice or memo should be set.
+    :param invoice: (optional) An :class:`Invoice <agora.model.invoice.Invoice>` to associate with this payment. Only
+        one of invoice or memo should be set.
     :param memo: (optional) The text memo to include with the transaction. Only one of invoice or memo should be set.
     """
 
@@ -65,8 +65,8 @@ class ReadOnlyPayment(object):
     :param dest: The public key, in raw bytes, of the destination account.
     :param payment_type: The type of this payment.
     :param quarks: The amount of the payment.
-    :param invoice: (optional) The :class:`Invoice <agora.invoice.Invoice>` associated with this payment. Only one of
-    invoice or memo will be set.
+    :param invoice: (optional) The :class:`Invoice <agora.model.invoice.Invoice>` associated with this payment. Only one
+        of invoice or memo will be set.
     :param memo: (optional) The text memo associated with this transaction. Only one of invoice or memo will be set.
     """
 

@@ -1,3 +1,5 @@
 *.pyc
 .idea
 .coverage
+docs/build
+docs/rst

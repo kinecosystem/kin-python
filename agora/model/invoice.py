@@ -92,6 +92,6 @@ class InvoiceList(object):
     def get_sha_224_hash(self) -> bytes:
         """Returns the SHA-224 of the marshaled protobuf form of this invoice.
 
-        :return the SHA-224 hash.
+        :return: the SHA-224 hash.
         """
         return hashlib.sha224(self.to_proto().SerializeToString()).digest()

@@ -11,9 +11,9 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb, transactio
 from agora.client.environment import Environment
 from agora.client.utils import public_key_to_address, quarks_to_kin_str
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
-    UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, \
-    DestinationDoesNotExistError, InsufficientBalanceError, InsufficientFeeError, BadNonceError, OperationInvoiceError, \
-    TransactionRejectedError, TransactionError, Error
+    UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
+    DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
+    OperationInvoiceError, TransactionRejectedError, TransactionError, Error
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
 from agora.model.memo import AgoraMemo
@@ -92,7 +92,7 @@ class BaseClient(object):
         """Retrieves a transaction.
 
         :param tx_hash: The hash of the transaction to retrieve
-        :return: a :class:`TransactionData <agora.transaction.TransactionData>` object.
+        :return: a :class:`TransactionData <agora.model.transaction.TransactionData>` object.
         """
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement get_transaction")
 
@@ -109,7 +109,7 @@ class BaseClient(object):
     def submit_payment(self, payment: Payment) -> bytes:
         """Submits a payment to the Kin blockchain.
 
-        :param payment: The :class:`Payment <agora.payment.Payment>` to submit.
+        :param payment: The :class:`Payment <agora.model.payment.Payment>` to submit.
 
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`TransactionMalformedError <agora.error.TransactionMalformedError>`
@@ -140,7 +140,7 @@ class BaseClient(object):
 
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
 
-        :return a :class:`BatchEarnResult <agora.results.BatchEarnResult>`
+        :return: a :class:`BatchEarnResult <agora.model.result.BatchEarnResult>`
         """
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_earn_batch")
 
@@ -290,7 +290,7 @@ class Client(BaseClient):
     def _submit_payment_tx(self, payment: Payment) -> bytes:
         """ Submits a payment transaction.
 
-        :param payment: The :class:`Payment <agora.payment.Payment>` to submit.
+        :param payment: The :class:`Payment <agora.model.payment.Payment>` to submit.
         :return: The transaction hash.
         """
         tx_source = payment.source if payment.source else payment.sender
@@ -334,7 +334,7 @@ class Client(BaseClient):
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
 
-        :return a :class:`BatchEarnResult <agora.results.BatchEarnResult>`
+        :return: a list of :class:`BatchEarnResult <agora.model.result.EarnResult>` objects
         """
         if len(earns) > 100:
             raise ValueError("cannot send more than 100 earns")
@@ -429,11 +429,13 @@ class Client(BaseClient):
     ) -> bytes:
         """Submit a stellar transaction to Agora.
         :param tx_bytes: The transaction envelope xdr, in bytes
-        :param invoice_list: (optional) An :class:`InvoiceList <agora.invoice.InvoiceList>` to associate with the
+        :param invoice_list: (optional) An :class:`InvoiceList <agora.model.invoice.InvoiceList>` to associate with the
             transaction
+        :raise: :exc:`TransactionRejectedError <agora.error.TransactionRejectedError>`: if the transaction was rejected
+            by the configured app's webhook
         :raise: :exc:`InvoiceError <agora.error.InvoiceError>`: if the transaction failed for a invoice-related reason.
-        :raise: :exc:`StellarTransactionError <agora.error.StellarTransactionError>`: if the transaction failed
-            upon submission to the blockchain.
+        :raise: :exc:`TransactionError <agora.error.TransactionError>`: if the transaction failed upon submission to the
+            blockchain.
         :return: The transaction hash
         """
 

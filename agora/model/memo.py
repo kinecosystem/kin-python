@@ -31,7 +31,7 @@ class AgoraMemo(object):
         """Returns an Agora memo containing the provided properties.
 
         :param version: The memo encoding version
-        :param tx_type: The :class:`TransactionType <agora.transaction_type.TransactionType>` of the transaction
+        :param tx_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of the transaction
         :param app_index: The index of the app the transaction relates to
         :param foreign_key: An identifier in an auxiliary service that contains additional data about what the
             transaction was for
@@ -119,7 +119,7 @@ class AgoraMemo(object):
         Stricter validation can be done via :meth:`AgoraMemo.is_valid_strict`. However,
         :meth:`AgoraMemo.is_valid_strict` is not as forward compatible.
 
-        :return A bool indicating whether the memo is valid
+        :return: A bool indicating whether the memo is valid
         """
         if self.val[0] & 0x3 != MAGIC_BYTE:
             return False
@@ -150,9 +150,9 @@ class AgoraMemo(object):
         return (self.val[0] & 0x1c) >> 2
 
     def tx_type(self) -> TransactionType:
-        """Returns the :class:`TransactionType <agora.transaction_type.TransactionType>` of this memo.
+        """Returns the :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this memo.
 
-        :return: :class:`TransactionType <agora.transaction_type.TransactionType>`
+        :return: :class:`TransactionType <agora.model.transaction_type.TransactionType>`
         """
         try:
             return TransactionType(self.tx_type_raw())

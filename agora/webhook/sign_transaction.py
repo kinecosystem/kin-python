@@ -51,7 +51,7 @@ class SignTransactionRequest(object):
     def get_tx_hash(self) -> bytes:
         """Returns the transaction hash of the transaction being signed.
 
-        :return The transaction hash, in bytes.
+        :return: The transaction hash, in bytes.
         """
         return self.envelope.hash_meta()
 

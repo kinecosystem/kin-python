@@ -13,8 +13,8 @@ class TransactionData(object):
     transaction.
 
     :param tx_hash: The hash of the transaction.
-    :param payments: (optional) A list of :class:`ReadOnlyPayment <agora.payment.ReadOnlyPayment>` objects.
-    :param error: (optional)) A :class:`TransactionError <agora.error.TransactionError>` object that contians extra
+    :param payments: (optional) A list of :class:`ReadOnlyPayment <agora.model.payment.ReadOnlyPayment>` objects.
+    :param error: (optional)) A :class:`TransactionError <agora.error.TransactionError>` object that contains extra
         details about why a transaction failed. If present, it indicates that the transaction failed.
     """
 

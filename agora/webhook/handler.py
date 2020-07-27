@@ -29,7 +29,7 @@ class WebhookHandler(object):
 
         :param req_body: The request body that the provided signature is supposedly for.
         :param signature: The base64-encoded signature to verify for the corresponding `req_body`.
-        :return A bool indicating whether or not the signature is valid.
+        :return: A bool indicating whether or not the signature is valid.
         """
         decoded_sig = base64.b64decode(signature)
         calculated_sig = hmac.new(self.secret, req_body.encode(), hashlib.sha256).digest()

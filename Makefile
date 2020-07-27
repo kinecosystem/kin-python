@@ -15,3 +15,8 @@ test:
 .PHONY: coverage
 coverage:
 	python -m pytest --timeout=10 --cov=agora --cov-report term-missing tests .
+
+.PHONY: docs
+docs:
+	sphinx-apidoc agora/ -o docs/rst
+	sphinx-build -b html docs/ docs/build

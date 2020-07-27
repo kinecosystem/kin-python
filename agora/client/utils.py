@@ -10,7 +10,7 @@ def kin_to_quarks(kin: float) -> int:
     """Converts a kin amount to quarks, with rounding. Uses the ROUND_HALF_UP method.
 
     :param kin: An amount, in Kin.
-    :return A integer quark amount.
+    :return: A integer quark amount.
     """
     return int((decimal.Decimal(kin) * _KIN_TO_QUARKS).quantize(decimal.Decimal('0.00001'),
                                                                 rounding=decimal.ROUND_HALF_UP).to_integral_value())
@@ -20,7 +20,7 @@ def quarks_to_kin(quarks: int) -> float:
     """Converts an amount of quarks to kin.
 
     :param quarks: An amount, in quarks.
-    :return A float Kin amount.
+    :return: A float Kin amount.
     """
     return float((decimal.Decimal(quarks) / _KIN_TO_QUARKS))
 

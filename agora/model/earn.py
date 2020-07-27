@@ -8,7 +8,7 @@ class Earn(object):
 
     :param destination: The public key, in raw bytes, of the account the earn will be sent to.
     :param quarks: The amount being sent.
-    :param invoice: (optional) An :class:`Invoice <agora.invoice.Invoice>` object to associate with this earn.
+    :param invoice: (optional) An :class:`Invoice <agora.model.invoice.Invoice>` object to associate with this earn.
     """
 
     def __init__(self, destination: bytes, quarks: int, invoice: Optional[Invoice] = None):
