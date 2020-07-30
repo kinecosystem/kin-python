@@ -49,7 +49,7 @@ _NON_RETRIABLE_ERRORS = [
     BadNonceError,
 ]
 
-_GRPC_TIMEOUT = 10
+_GRPC_TIMEOUT_SECONDS = 10
 
 
 class RetryConfig(object):
@@ -217,7 +217,7 @@ class Client(BaseClient):
             transaction_hash=model_pb2.TransactionHash(
                 value=tx_hash
             )
-        ), timeout=_GRPC_TIMEOUT)
+        ), timeout=_GRPC_TIMEOUT_SECONDS)
 
         if resp.state in [tx_pb.GetTransactionResponse.State.SUCCESS, tx_pb.GetTransactionResponse.State.FAILED]:
             return TransactionData.from_proto(resp.item)
@@ -275,6 +275,7 @@ class Client(BaseClient):
                 for e in result_errors:
                     if not self._should_retry(self.nonce_retry_strategies, i, e):
                         should_retry = False
+                        break
 
                 if not should_retry:
                     failed += earn_results
@@ -390,7 +391,7 @@ class Client(BaseClient):
             account_id=model_pb2.StellarAccountId(
                 value=kp.address().decode()
             )
-        ), timeout=_GRPC_TIMEOUT)
+        ), timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
             raise AccountExistsError()
 
@@ -404,7 +405,7 @@ class Client(BaseClient):
             account_id=model_pb2.StellarAccountId(
                 value=public_key_to_address(public_key)
             )
-        ), timeout=_GRPC_TIMEOUT)
+        ), timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
             raise AccountNotFoundError
 
@@ -420,7 +421,7 @@ class Client(BaseClient):
         source_info = self._get_stellar_account_info(kp.raw_public_key())
 
         return kin_base.Builder(self._horizon, self.network_name,
-                                0 if self.whitelist_kp else 100,
+                                100,
                                 kp.seed().decode(),
                                 sequence=source_info.sequence_number + 1)
 
@@ -443,7 +444,7 @@ class Client(BaseClient):
             resp = self.transaction_stub.SubmitTransaction(tx_pb.SubmitTransactionRequest(
                 envelope_xdr=tx_bytes,
                 invoice_list=invoice_list.to_proto() if invoice_list else None,
-            ), timeout=_GRPC_TIMEOUT)
+            ), timeout=_GRPC_TIMEOUT_SECONDS)
 
             if resp.result == tx_pb.SubmitTransactionResponse.Result.REJECTED:
                 raise TransactionRejectedError()

@@ -366,7 +366,7 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
-        self._assert_payment_envelope(submit_req.envelope_xdr, [sender, whitelisting_client.whitelist_kp], sender, 0,
+        self._assert_payment_envelope(submit_req.envelope_xdr, [sender, whitelisting_client.whitelist_kp], sender, 100,
                                       11,
                                       memo.NoneMemo(), payment)
         assert len(submit_req.invoice_list.invoices) == 0
@@ -663,7 +663,7 @@ class TestAgoraClient(object):
         assert account_req.account_id.value == sender.address().decode()
 
         expected_signers = [sender, whitelisting_client.whitelist_kp]
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, sender, 0, 11, memo.NoneMemo(),
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, sender, 100, 11, memo.NoneMemo(),
                                          sender, earns)
 
     def test_submit_earn_batch_with_memo(self, grpc_channel, executor, no_retry_client):
