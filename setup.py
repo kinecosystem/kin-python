@@ -16,7 +16,7 @@ setup(
     description='Agora SDK for Python',
     author='Kik Engineering',
     author_email='engineering@kik.com',
-    url='https://github.com/kincsostyem/kin-python-internal',
+    url='https://github.com/kinecosystem/kin-python',
     license='MIT',
     packages=find_packages(include=["agora", "agora.*"]),
     long_description=open("README.md").read(),
