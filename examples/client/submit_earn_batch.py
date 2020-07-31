@@ -4,7 +4,7 @@ import kin_base
 
 from agora.client.client import Client, RetryConfig
 from agora.client.environment import Environment
-from agora.client.utils import kin_to_quarks, public_key_to_address
+from agora.client.utils import public_key_to_address
 from agora.model.earn import Earn
 from agora.model.invoice import Invoice, LineItem
 
@@ -21,8 +21,8 @@ source_kp = kin_base.Keypair.from_seed(args['sender'])
 
 dest_kps = [kin_base.Keypair.from_address(addr) for addr in args['destinations'].split(',')]
 
-# Send an earn batch
-earns = [Earn(dest_kp.raw_public_key(), kin_to_quarks(1)) for idx, dest_kp in enumerate(dest_kps)]
+# Send an earn batch with 1 Kin each
+earns = [Earn(dest_kp.raw_public_key(), 100000) for idx, dest_kp in enumerate(dest_kps)]
 batch_result = client.submit_earn_batch(source_kp.raw_seed(), earns)
 print("{} succeeded, {} failed".format(len(batch_result.succeeded), len(batch_result.failed)))
 for result in batch_result.succeeded:
@@ -37,8 +37,8 @@ for result in batch_result.failed:
         repr(result.error),
     ))
 
-# Send an earn batch, with invoices
-earns = [Earn(dest_kp.raw_public_key(), kin_to_quarks(1), invoice=Invoice([LineItem("Payment {}", kin_to_quarks(1))]))
+# Send an earn batch of earns with 1 Kin each, with invoices
+earns = [Earn(dest_kp.raw_public_key(), 100000, invoice=Invoice([LineItem("Payment {}".format(idx), 100000)]))
          for idx, dest_kp in enumerate(dest_kps)]
 batch_result = client.submit_earn_batch(source_kp.raw_seed(), earns)
 print("{} succeeded, {} failed".format(len(batch_result.succeeded), len(batch_result.failed)))
