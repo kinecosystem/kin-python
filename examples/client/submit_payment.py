@@ -2,12 +2,9 @@ import argparse
 
 import kin_base
 
-from agora.client.client import Client, RetryConfig
-from agora.client.environment import Environment
+from agora.client import Client, RetryConfig, Environment
 from agora.error import Error, TransactionError
-from agora.model.invoice import Invoice, LineItem
-from agora.model.payment import Payment
-from agora.model.transaction_type import TransactionType
+from agora.model import Invoice, LineItem, Payment, TransactionType
 
 
 def submit_payment(p: Payment):

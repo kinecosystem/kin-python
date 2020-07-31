@@ -2,8 +2,7 @@ import argparse
 
 import kin_base
 
-from agora.client.client import Client, RetryConfig
-from agora.client.environment import Environment
+from agora.client import Client, RetryConfig, Environment
 from agora.error import AccountExistsError
 
 ap = argparse.ArgumentParser()
