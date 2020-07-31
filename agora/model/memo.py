@@ -56,7 +56,7 @@ class AgoraMemo(object):
         val[0] |= v << 2
         val[0] |= (t & 0x7) << 5
 
-        val[1] = (t & 0x1c) >> 2
+        val[1] = (t & 0x18) >> 3
         val[1] |= (app_index & 0x3f) << 2
 
         val[2] = (app_index & 0x3fc0) >> 6
@@ -178,7 +178,7 @@ class AgoraMemo(object):
         c = (self.val[3] & 0x3) << 14
         return a | b | c
 
-    def foreign_key(self) -> bytearray:
+    def foreign_key(self) -> bytes:
         """Returns the foreign key of the memo.
 
         :return: the foreign key
@@ -190,4 +190,4 @@ class AgoraMemo(object):
 
         fk[28] = self.val[31] >> 2
 
-        return fk
+        return bytes(fk)

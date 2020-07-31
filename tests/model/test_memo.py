@@ -1,6 +1,9 @@
+import base64
+
 import pytest
 from kin_base import memo
 
+from agora.model.invoice import InvoiceList, Invoice, LineItem
 from agora.model.memo import AgoraMemo, MAGIC_BYTE
 from agora.model.transaction_type import TransactionType
 
@@ -19,7 +22,7 @@ class TestMemo(object):
             assert m.app_index() == 1
             assert m.foreign_key() == empty_fk
 
-        # # Test all transaction types
+        # Test all transaction types
         for tx_type in TransactionType:
             m = AgoraMemo.new(1, TransactionType(tx_type), 1, b'')
 
@@ -39,7 +42,7 @@ class TestMemo(object):
             assert m.app_index() == app_index
             assert m.foreign_key() == empty_fk
 
-            # Test potential foreign key byte values
+        # Test potential foreign key byte values
         for i in range(0, 256):
             fk = bytearray(29)
             for j in range(0, 29):
@@ -98,6 +101,12 @@ class TestMemo(object):
         assert m.is_valid()
         assert not m.is_valid_strict()
 
+    def test_transaction_type_raw(self):
+        for i in range(32):
+            # pass int instead of TransactionType to test the values of types that don't exist yet
+            m = AgoraMemo.new(0, i, 0, bytes(29))
+            assert m.tx_type_raw() == i
+
     def test_from_base_memo(self):
         valid_memo = AgoraMemo.new(2, TransactionType.EARN, 1, bytes(29))
         strictly_valid_memo = AgoraMemo.new(1, TransactionType.EARN, 1,
@@ -135,3 +144,42 @@ class TestMemo(object):
         actual = AgoraMemo.from_xdr(
             memo.HashMemo(strictly_valid_memo.val).to_xdr_object(), True)
         assert actual.val == strictly_valid_memo.val
+
+    def test_cross_language(self):
+        """Test parsing memos generated using the Go memo implementation.
+        """
+        # memo with an empty FK
+        b64_encoded_memo = 'PVwrAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+        hash_memo = memo.HashMemo(base64.b64decode(b64_encoded_memo))
+        m = AgoraMemo.from_base_memo(hash_memo, False)
+        assert m.version() == 7
+        assert m.tx_type() == TransactionType.EARN
+        assert m.app_index() == 51927
+        assert m.foreign_key() == bytes(29)
+
+        # memo with unknown tx type
+        b64_encoded_memo = 'RQUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+        hash_memo = memo.HashMemo(base64.b64decode(b64_encoded_memo))
+        m = AgoraMemo.from_base_memo(hash_memo, False)
+        assert m.version() == 1
+        assert m.tx_type() == TransactionType.UNKNOWN
+        assert m.tx_type_raw() == 10
+        assert m.app_index() == 1
+        assert m.foreign_key() == bytes(29)
+
+        # memo with an invoice list hash
+        b64_encoded_memo = 'ZQQAiLyJQCfEDmO0QOygz/PZOLDcbwP1FmbdtZ9E+wM='
+        hash_memo = memo.HashMemo(base64.b64decode(b64_encoded_memo))
+
+        expected_il = InvoiceList([Invoice([
+            LineItem("Important Payment", 100000, description="A very important payment", sku=b'some sku')])])
+        expected_fk = expected_il.get_sha_224_hash()
+
+        m = AgoraMemo.from_base_memo(hash_memo, True)
+
+        assert m.version() == 1
+        assert m.tx_type() == TransactionType.P2P
+        assert m.app_index() == 1
+
+        # invoice hashes are only 28 bytes, so we ignore the 29th byte in the foreign key
+        assert m.foreign_key()[:28] == expected_fk
