@@ -11,9 +11,9 @@ with open('requirements.dev.txt') as f:
     tests_requires = f.readlines()
 
 setup(
-    name='agora',
+    name='kin-sdk-v2',
     version=VERSION,
-    description='Agora SDK for Python',
+    description='Kin SDK for Python',
     author='Kik Engineering',
     author_email='engineering@kik.com',
     url='https://github.com/kinecosystem/kin-python',

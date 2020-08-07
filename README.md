@@ -7,7 +7,6 @@ such as creating accounts and sending payments, as well a webhook handler class 
 Python 3.6 or higher
 
 ## Installation
-TODO: finalize pypi package name
 ```
 pip install kin-sdk-v2
 ```
