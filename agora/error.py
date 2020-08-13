@@ -72,7 +72,8 @@ class WebhookRequestError(Error):
     :param response_body: The response body to respond with.
     """
 
-    def __init__(self, status_code: int, response_body: str = ""):
+    def __init__(self, status_code: int, *args, response_body: str = "", **kwargs):
+        super().__init__(*args, **kwargs)
         self.status_code = status_code
         self.response_body = response_body
 
@@ -103,7 +104,8 @@ class InvoiceErrorReason(IntEnum):
 
 
 class OperationInvoiceError(Error):
-    def __init__(self, op_index: int, reason: InvoiceErrorReason):
+    def __init__(self, op_index: int, reason: InvoiceErrorReason, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.op_index = op_index
         self.reason = reason
 
@@ -123,7 +125,8 @@ class InvoiceError(Error):
     """Raised when there was an issue with a provided invoice.
     """
 
-    def __init__(self, errors: List[OperationInvoiceError]):
+    def __init__(self, errors: List[OperationInvoiceError], *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.errors = errors
 
 
@@ -138,7 +141,9 @@ class TransactionError(Error):
         succeeded, only that it was not the reason that the transaction failed.
     """
 
-    def __init__(self, tx_error: Optional[Error] = None, op_errors: Optional[List[Optional[Error]]] = None):
+    def __init__(self, *args, tx_error: Optional[Error] = None, op_errors: Optional[List[Optional[Error]]] = None,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
         self.tx_error = tx_error
         self.op_errors = op_errors if op_errors else []
 
