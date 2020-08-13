@@ -7,7 +7,7 @@ from typing import List
 import kin_base
 from kin_base import transaction_envelope as te
 
-from agora.error import WebhookRequestError, OperationInvoiceError, InvoiceErrorReason
+from agora.error import WebhookRequestError, InvoiceErrorReason
 from agora.webhook.events import Event
 from agora.webhook.handler import WebhookHandler
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
@@ -67,6 +67,11 @@ class TestWebhookHandler(object):
         status_code, resp_body = handler.handle_events(self._event_return_none, sig, req_body)
         assert status_code == 200
 
+        # fake signature with no webhook secret should result in a successful response
+        handler = WebhookHandler()
+        status_code, resp_body = handler.handle_events(self._event_return_none, "fakesig", req_body)
+        assert status_code == 200
+
     def test_handle_sign_transaction(self):
         secret = b'secret'
         handler = WebhookHandler(secret=secret)
@@ -117,6 +122,14 @@ class TestWebhookHandler(object):
 
         # successful
         status_code, resp_body = handler.handle_sign_transaction(self._sign_tx_success, sig, req_body)
+        assert status_code == 200
+
+        actual_env = te.TransactionEnvelope.from_xdr(json.loads(resp_body)['envelope_xdr'])
+        _TEST_KP.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
+
+        # fake signature with no webhook secret should result in a successful response
+        handler = WebhookHandler()
+        status_code, resp_body = handler.handle_sign_transaction(self._sign_tx_success, "fakesig", req_body)
         assert status_code == 200
 
         actual_env = te.TransactionEnvelope.from_xdr(json.loads(resp_body)['envelope_xdr'])

@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 from json import JSONDecodeError
-from typing import Tuple, Callable, List
+from typing import Tuple, Callable, List, Optional
 
 from agora.error import WebhookRequestError
 from agora.webhook.events import Event
@@ -21,7 +21,7 @@ class WebhookHandler(object):
     :param secret: The secret used to verify request signatures.
     """
 
-    def __init__(self, secret: bytes):
+    def __init__(self, secret: Optional[bytes] = None):
         self.secret = secret
 
     def is_valid_signature(self, req_body: str, signature: str) -> bool:
@@ -44,7 +44,7 @@ class WebhookHandler(object):
         :param req_body: The request body.
         :return: A Tuple of the status code (int) and the request body (str)
         """
-        if not self.is_valid_signature(req_body, signature):
+        if self.secret and not self.is_valid_signature(req_body, signature):
             return 401, ''
 
         try:
@@ -75,7 +75,7 @@ class WebhookHandler(object):
         :return: A Tuple of the status code (int) and the request body (str).
         """
 
-        if not self.is_valid_signature(req_body, signature):
+        if self.secret and not self.is_valid_signature(req_body, signature):
             return 401, ''
 
         try:
