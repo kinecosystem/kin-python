@@ -22,13 +22,14 @@ The main component of this library is the `Client` class, which facilitates acce
 ### Initialization
 At a minimum, the client needs to be instantiated with an `Environment`.
 
-```
-from
+```python
+from agora.client import Client, Environment 
 client = Client(Environment.TEST)
 ```
 
 Apps with registered (TODO: hyperlink) app indexes should initialize the client with their index:
-```
+```python
+from agora.client import Client, Environment
 client = Client(Environment.TEST, app_index=1)
 ```
 
@@ -41,34 +42,33 @@ Additional options include:
 ### Usage
 #### Create an Account
 The `create_account` method creates an account with the provided private key.
-```
+```python
 private_key = b'yourkey'
 client.create_account(private_key)
 ```
 
 #### Get a Transaction
 The `get_transaction` method gets transaction data by transaction hash.
-```
+```python
 tx_hash = b'txhash'
 transaction_data = client.get_transaction(tx_hash)
 ```
 
 #### Get an Account Balance
 The `get_balance` method gets the balance of the provided account, in quarks.
-```
+```python
 public_key = b'yourkey'
 balance = client.get_balance(public_key)
 ``` 
 
 #### Submit a Payment
 The `submit_payment` method submits the provided payment to Agora.
-```
-from agora.client import Client
-from agora.client.utils import kin_to_quarks
+```python
+from agora.client import Client, Environment
 from agora.model import Payment, TransactionType
 
 client = Client(Environment.TEST, app_index=1)
-payment = Payment(b'sender_private_key', b'dest_public_key', TransactionType.EARN, kin_to_quarks(1))
+payment = Payment(b'sender_private_key', b'dest_public_key', TransactionType.EARN, 100000)
 
 tx_hash = client.submit_payment(payment)
 ```
@@ -87,15 +87,16 @@ Additionally, it has some optional properties:
 #### Submit an Earn Batch
 The `submit_earn_batch` method submits a batch of earns to Agora from a single account. It batches the earns into fewer 
 transactions where possible and submits as many transactions as necessary to submit all the earns.
-```
-from agora.client import Client
-from agora.client.utils import kin_to_quarks
-from agora.model import Payment, TransactionType
+```python
+from agora.client import Client, Environment
+from agora.model import Earn
 
 client = Client(Environment.TEST, app_index=1)
+
+# Send one earn of 1 Kin and one earn of 2 Kin
 earns = [
-    Earn(b'dest_public_key1', kin_to_quarks(1)),
-    Earn(b'dest_public_key2', kin_to_quarks(2)),
+    Earn(b'dest_public_key1', 100000),
+    Earn(b'dest_public_key2', 200000),
     ...
 ]
 
@@ -123,10 +124,10 @@ Only apps that have been assigned an app index (TODO: hyperlink) can make use of
 
 ### Initialization
 The `WebhookHandler` must be instantiated with the app's configured webhook secret (TODO: hyperlink).
-```
+```python
 from agora.webhook.handler import WebhookHandler
 
-webhook_handler = WebhookHandler(b`mysecret`)
+webhook_handler = WebhookHandler(b'mysecret')
 ```  
 
 ### Usage
@@ -136,17 +137,31 @@ Currently, `WebhookHandler` contains support for the following webhooks:
 
 #### Events Webhook
 To use the `WebhookHandler` with the Events webhook, developers should define a function that accepts a list of events and processes them in some way:
-```
+```python
+from typing import List
+
 from agora.webhook.events import Event
 
 
 def process_events(events: List[Event]) -> None:
     # some processing logic
+    return
 ``` 
 
 This function can be used with `WebhookHandler.handle_events` inside your events endpoint logic as follows:
-```
-from agora.webhook.handler import WebhookHandler, AGORA_HMAC_HEADER
+```python
+from typing import List
+
+from agora.webhook import WebhookHandler, AGORA_HMAC_HEADER
+from agora.webhook.events import Event
+
+webhook_handler = WebhookHandler(b'mysecret')
+
+
+def process_events(events: List[Event]) -> None:
+    # some processing logic
+    return
+
 
 # This will vary depending on which framework is used.
 def events_endpoint_func(request):
@@ -166,17 +181,24 @@ def events_endpoint_func(request):
 
 #### Sign Transaction Webhook 
 To use the `WebhookHandler` with the Sign Transaction webhook, developers should define a function that accepts a sign transaction request and response object and verifies the request in some way and modifies the response object as needed:
-```
+```python
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 
 def verify_request(req: SignTransactionRequest, resp: SignTransactionResponse) -> None:
     # verify the transaction inside `req`, and modify `resp` as needed.
-
+    return
 ```
 
 This function can be used with `WebhookHandler.sign_transaction` inside your sign transaction endpoint logic as follows:
-```
-from agora.webhook.handler import WebhookHandler, AGORA_HMAC_HEADER
+```python
+from agora.webhook import WebhookHandler, AGORA_HMAC_HEADER
+from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
+
+webhook_handler = WebhookHandler(b'mysecret')
+
+def verify_request(req: SignTransactionRequest, resp: SignTransactionResponse) -> None:
+    # verify the transaction inside `req`, and modify `resp` as needed.
+    return
 
 # This will vary depending on which framework is used.
 def sign_tx_endpoint_func(request):
