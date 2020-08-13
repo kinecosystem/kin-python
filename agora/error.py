@@ -40,6 +40,9 @@ class TransactionMalformedError(Error):
     """Raised when the provided transaction was malformed in some way.
     """
 
+class TransactionNotFound(Error):
+    """Raised when no transaction data for a specified transaction could be found.
+    """
 
 class InvalidSignatureError(Error):
     """Raised when the submitted transaction is either missing signatures or

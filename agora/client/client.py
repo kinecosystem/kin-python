@@ -12,7 +12,7 @@ from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
     DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
-    OperationInvoiceError, TransactionRejectedError, TransactionError, Error
+    OperationInvoiceError, TransactionRejectedError, TransactionError, TransactionNotFound, Error
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
 from agora.model.memo import AgoraMemo
@@ -218,6 +218,8 @@ class Client(BaseClient):
             )
         ), timeout=_GRPC_TIMEOUT_SECONDS)
 
+        if resp.state is tx_pb.GetTransactionResponse.State.UNKNOWN:
+            raise TransactionNotFound()
         if resp.state == tx_pb.GetTransactionResponse.State.SUCCESS:
             return TransactionData.from_proto(resp.item)
 

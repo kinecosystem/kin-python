@@ -17,7 +17,7 @@ from agora.client.client import Client, RetryConfig, BaseClient
 from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     InsufficientBalanceError, DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
-    TransactionRejectedError, TransactionError, Error
+    TransactionRejectedError, TransactionError, TransactionNotFound, Error
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList, Invoice, LineItem
 from agora.model.memo import AgoraMemo
@@ -221,7 +221,7 @@ class TestAgoraClient(object):
         resp = tx_pb.GetTransactionResponse(state=tx_pb.GetTransactionResponse.State.UNKNOWN)
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
 
-        with pytest.raises(Error):
+        with pytest.raises(TransactionNotFound):
             future.result()
 
         assert request.transaction_hash.value == tx_hash
