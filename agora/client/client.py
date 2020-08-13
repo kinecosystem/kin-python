@@ -163,13 +163,13 @@ class Client(BaseClient):
     def __init__(
         self, env: Environment, app_index: int = 0, whitelist_key: Optional[bytes] = None,
         grpc_channel: Optional[grpc.Channel] = None, endpoint: Optional[str] = None,
-        retry_config: Optional[RetryConfig] = None
+        retry_config: Optional[RetryConfig] = None,
     ):
         self.network_name = _NETWORK_NAMES[env]
         self.app_index = app_index
 
         if grpc_channel and endpoint:
-            raise ValueError("")
+            raise ValueError("grpc_channel and endpoint cannot both be set")
 
         if not grpc_channel:
             endpoint = endpoint if endpoint else _ENDPOINTS[env]
@@ -298,12 +298,12 @@ class Client(BaseClient):
         tx_source = payment.source if payment.source else payment.sender
         builder = self._get_stellar_builder(tx_source)
 
-        if payment.invoice:
-            fk = InvoiceList(invoices=[payment.invoice]).get_sha_224_hash()
+        if payment.memo:
+            builder.add_text_memo(payment.memo)
+        elif self.app_index > 0:
+            fk = InvoiceList(invoices=[payment.invoice]).get_sha_224_hash() if payment.invoice else b''
             memo = AgoraMemo.new(1, payment.payment_type, self.app_index, fk)
             builder.add_hash_memo(memo.val)
-        elif payment.memo:
-            builder.add_text_memo(payment.memo)
 
         sender_kp = kin_base.Keypair.from_raw_seed(payment.sender)
         builder.append_payment_op(
@@ -347,8 +347,8 @@ class Client(BaseClient):
         invoices = [earn.invoice for earn in earns if earn.invoice]
         if memo:
             builder.add_text_memo(memo)
-        elif invoices:
-            fk = InvoiceList(invoices=invoices).get_sha_224_hash()
+        elif self.app_index > 0:
+            fk = InvoiceList(invoices=invoices).get_sha_224_hash() if invoices else b''
             memo = AgoraMemo.new(1, TransactionType.EARN, self.app_index, fk)
             builder.add_hash_memo(memo.val)
 

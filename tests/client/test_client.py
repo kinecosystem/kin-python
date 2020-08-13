@@ -25,7 +25,7 @@ from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
 from agora.utils import partition, kin_str_to_quarks, quarks_to_kin_str
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
-    gen_payment_op_result, gen_result_xdr, gen_hash_memo, gen_text_memo
+    gen_payment_op_result, gen_result_xdr, gen_hash_memo
 
 _config_with_retry = RetryConfig(max_retries=2, min_delay=0.1, max_delay=2, max_nonce_refreshes=0)
 _config_with_nonce_retry = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=2)
@@ -47,16 +47,16 @@ def executor():
 
 
 @pytest.fixture(scope='class')
-def no_retry_client(grpc_channel) -> Client:
-    """Returns an AgoraClient that has no retrying configured.
+def app_index_client(grpc_channel) -> Client:
+    """Returns an AgoraClient that has an app index and no retrying configured.
     """
     retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
     return Client(Environment.TEST, app_index=1, grpc_channel=grpc_channel, retry_config=retry_config)
 
 
 @pytest.fixture(scope='class')
-def no_app_index_client(grpc_channel) -> Client:
-    """Returns an AgoraClient that has no app index configured.
+def no_app_client(grpc_channel) -> Client:
+    """Returns an AgoraClient that has no app index and no retrying configured.
     """
     retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
     return Client(Environment.TEST, grpc_channel=grpc_channel, retry_config=retry_config)
@@ -108,6 +108,10 @@ class TestBaseClient(object):
 # Filter warnings caused by instantiating Horizon inside AgoraApi
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 class TestAgoraClient(object):
+    def test_invalid_inits(self, grpc_channel):
+        with pytest.raises(ValueError):
+            Client(Environment.TEST, grpc_channel=grpc_channel, endpoint='fakeendpoint')
+
     def test_unsupported_version(self, grpc_channel):
         retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
         client = Client(Environment.TEST, grpc_channel=grpc_channel, retry_config=retry_config)
@@ -125,9 +129,9 @@ class TestAgoraClient(object):
         with pytest.raises(UnsupportedVersionError):
             client.submit_earn_batch(b'', [])
 
-    def test_create_account(self, grpc_channel, executor, no_retry_client):
+    def test_create_account(self, grpc_channel, executor, app_index_client):
         kp = kin_base.Keypair.random()
-        future = executor.submit(no_retry_client.create_account, kp.raw_seed())
+        future = executor.submit(app_index_client.create_account, kp.raw_seed())
 
         _, request, rpc = grpc_channel.take_unary_unary(
             account_pb.DESCRIPTOR.services_by_name['Account'].methods_by_name['CreateAccount']
@@ -138,9 +142,9 @@ class TestAgoraClient(object):
         assert request.account_id.value == kp.address().decode()
         assert not future.result()
 
-    def test_create_account_exists(self, grpc_channel, executor, no_retry_client):
+    def test_create_account_exists(self, grpc_channel, executor, app_index_client):
         kp = kin_base.Keypair.random()
-        application_future = executor.submit(no_retry_client.create_account, kp.raw_seed())
+        application_future = executor.submit(app_index_client.create_account, kp.raw_seed())
 
         _, request, rpc = grpc_channel.take_unary_unary(
             account_pb.DESCRIPTOR.services_by_name['Account'].methods_by_name['CreateAccount']
@@ -153,9 +157,9 @@ class TestAgoraClient(object):
 
         assert request.account_id.value == kp.address().decode()
 
-    def test_get_transaction(self, grpc_channel, executor, no_retry_client):
+    def test_get_transaction(self, grpc_channel, executor, app_index_client):
         tx_hash = b'somehash'
-        future = executor.submit(no_retry_client.get_transaction, tx_hash)
+        future = executor.submit(app_index_client.get_transaction, tx_hash)
 
         _, request, rpc = grpc_channel.take_unary_unary(
             tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
@@ -210,9 +214,9 @@ class TestAgoraClient(object):
 
         assert request.transaction_hash.value == tx_hash
 
-    def test_get_transaction_unknown(self, grpc_channel, executor, no_retry_client):
+    def test_get_transaction_unknown(self, grpc_channel, executor, app_index_client):
         tx_hash = b'somehash'
-        future = executor.submit(no_retry_client.get_transaction, tx_hash)
+        future = executor.submit(app_index_client.get_transaction, tx_hash)
 
         _, request, rpc = grpc_channel.take_unary_unary(
             tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
@@ -226,9 +230,9 @@ class TestAgoraClient(object):
 
         assert request.transaction_hash.value == tx_hash
 
-    def test_get_balance(self, grpc_channel, executor, no_retry_client):
+    def test_get_balance(self, grpc_channel, executor, app_index_client):
         kp = kin_base.Keypair.random()
-        future = executor.submit(no_retry_client.get_balance, kp.raw_public_key())
+        future = executor.submit(app_index_client.get_balance, kp.raw_public_key())
 
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.OK,
@@ -246,9 +250,9 @@ class TestAgoraClient(object):
 
         assert req.account_id.value == kp.address().decode()
 
-    def test_get_balance_not_found(self, grpc_channel, executor, no_retry_client):
+    def test_get_balance_not_found(self, grpc_channel, executor, app_index_client):
         kp = kin_base.Keypair.random()
-        future = executor.submit(no_retry_client.get_balance, kp.raw_public_key())
+        future = executor.submit(app_index_client.get_balance, kp.raw_public_key())
 
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.NOT_FOUND,
@@ -260,12 +264,12 @@ class TestAgoraClient(object):
 
         assert req.account_id.value == kp.address().decode()
 
-    def test_submit_payment_simple(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_simple(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000)
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -276,17 +280,18 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
-        self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), payment)
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_payment_with_source(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_with_source(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         source = kin_base.Keypair.random()
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000,
                           source=source.raw_seed())
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, source, 10)
 
@@ -298,7 +303,8 @@ class TestAgoraClient(object):
         assert account_req.account_id.value == source.address().decode()
 
         expected_signers = [sender, source]
-        self._assert_payment_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, memo.NoneMemo(),
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_payment_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, expected_memo,
                                       payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
@@ -318,18 +324,18 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender, whitelisting_client.whitelist_kp], sender, 100,
-                                      11,
-                                      memo.NoneMemo(), payment)
+                                      11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_payment_with_invoice(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_with_invoice(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         invoice = Invoice([LineItem('title1', 100000, 'description1', b'somesku')])
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000, invoice=invoice)
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -346,22 +352,22 @@ class TestAgoraClient(object):
         assert len(submit_req.invoice_list.invoices) == 1
         assert submit_req.invoice_list.invoices[0].SerializeToString() == invoice.to_proto().SerializeToString()
 
-    def test_submit_payment_with_invoice_no_app_index(self, grpc_channel, executor, no_app_index_client):
+    def test_submit_payment_with_invoice_no_app_index(self, grpc_channel, executor, no_app_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         invoice = Invoice([LineItem('title1', 100000, 'description1', b'somesku')])
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000, invoice=invoice)
 
-        future = executor.submit(no_app_index_client.submit_payment, payment)
+        future = executor.submit(no_app_client.submit_payment, payment)
         with pytest.raises(ValueError):
             future.result()
 
-    def test_submit_payment_with_memo(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_with_memo(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000, memo='somememo')
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -376,12 +382,12 @@ class TestAgoraClient(object):
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_payment_rejected(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_rejected(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000)
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -396,16 +402,17 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
-        self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), payment)
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_payment_invoice_error(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_invoice_error(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         invoice = Invoice([LineItem('title1', 100000, 'description1', b'somesku1')])
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000, invoice=invoice)
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -437,12 +444,12 @@ class TestAgoraClient(object):
         assert len(submit_req.invoice_list.invoices) == 1
         assert submit_req.invoice_list.invoices[0].SerializeToString() == invoice.to_proto().SerializeToString()
 
-    def test_submit_payment_tx_failed(self, grpc_channel, executor, no_retry_client):
+    def test_submit_payment_tx_failed(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         dest = kin_base.Keypair.random()
         payment = Payment(sender.raw_seed(), dest.raw_public_key(), TransactionType.EARN, 100000)
 
-        future = executor.submit(no_retry_client.submit_payment, payment)
+        future = executor.submit(app_index_client.submit_payment, payment)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -460,7 +467,8 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
-        self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), payment)
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_payment_with_retry(self, grpc_channel, executor, retry_client):
@@ -491,8 +499,9 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
-            self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), payment)
+            self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
             assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_payment_with_nonce_retry(self, grpc_channel, executor, nonce_retry_client):
@@ -524,15 +533,16 @@ class TestAgoraClient(object):
         for account_req in account_reqs:
             assert account_req.account_id.value == sender.address().decode()
 
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
-            self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), payment)
+            self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
             assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_multiple(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_multiple(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         all_earns = [Earn(kin_base.Keypair.random().raw_public_key(), i) for i in range(250)]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), all_earns)
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), all_earns)
 
         account_reqs = []
         submit_reqs = []
@@ -560,16 +570,17 @@ class TestAgoraClient(object):
 
         earn_batches = partition(all_earns, 100)
         for idx, submit_req in enumerate(submit_reqs):
+            expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
             self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, starting_seq + idx + 1,
-                                             memo.NoneMemo(), sender, earn_batches[idx])
+                                             expected_memo, sender, earn_batches[idx])
             assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_with_source(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_with_source(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         source = kin_base.Keypair.random()
         earns = [Earn(kin_base.Keypair.random().raw_public_key(), 100000)]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns, source=source.raw_seed())
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns, source=source.raw_seed())
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, source, 10)
 
@@ -588,7 +599,8 @@ class TestAgoraClient(object):
         assert account_req.account_id.value == source.address().decode()
 
         expected_signers = [sender, source]
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, memo.NoneMemo(),
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, expected_memo,
                                          sender, earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
@@ -615,14 +627,15 @@ class TestAgoraClient(object):
         assert account_req.account_id.value == sender.address().decode()
 
         expected_signers = [sender, whitelisting_client.whitelist_kp]
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, sender, 100, 11, memo.NoneMemo(),
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, sender, 100, 11, expected_memo,
                                          sender, earns)
 
-    def test_submit_earn_batch_with_memo(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_with_memo(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [Earn(kin_base.Keypair.random().raw_public_key(), 100000)]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns, memo="somememo")
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns, memo="somememo")
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -645,7 +658,7 @@ class TestAgoraClient(object):
                                          sender, earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_with_invoices(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_with_invoices(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000,
@@ -654,7 +667,7 @@ class TestAgoraClient(object):
                  invoice=Invoice([LineItem('title2', 100000, 'description2', b'somesku')])),
         ]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns)
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -679,7 +692,7 @@ class TestAgoraClient(object):
         assert len(submit_req.invoice_list.invoices) == 2
         assert submit_req.invoice_list.SerializeToString() == il.to_proto().SerializeToString()
 
-    def test_submit_earn_batch_with_invoices_no_app_index(self, grpc_channel, executor, no_app_index_client):
+    def test_submit_earn_batch_with_invoices_no_app_index(self, grpc_channel, executor, no_app_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000,
@@ -688,12 +701,12 @@ class TestAgoraClient(object):
                  invoice=Invoice([LineItem('title2', 100000, 'description2', b'somesku')])),
         ]
 
-        future = executor.submit(no_app_index_client.submit_earn_batch, sender.raw_seed(), earns)
+        future = executor.submit(no_app_client.submit_earn_batch, sender.raw_seed(), earns)
 
         with pytest.raises(ValueError):
             future.result()
 
-    def test_submit_earn_batch_with_some_invoices(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_with_some_invoices(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000,
@@ -701,31 +714,31 @@ class TestAgoraClient(object):
             Earn(kin_base.Keypair.random().raw_public_key(), 100000),
         ]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns)
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns)
 
         with pytest.raises(ValueError):
             future.result()
 
-    def test_submit_earn_batch_with_invoices_and_memo(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_with_invoices_and_memo(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000,
                  invoice=Invoice([LineItem('title1', 100000, 'description1', b'somesku')])),
         ]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns, memo="somememo")
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns, memo="somememo")
 
         with pytest.raises(ValueError):
             future.result()
 
-    def test_submit_earn_batch_rejected(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_rejected(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000),
             Earn(kin_base.Keypair.random().raw_public_key(), 100000),
         ]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns)
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -746,11 +759,12 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), sender,
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, sender,
                                          earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_invoice_error(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_invoice_error(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000,
@@ -759,7 +773,7 @@ class TestAgoraClient(object):
                  invoice=Invoice([LineItem('title1', 100000, 'description1', b'somesku')])),
         ]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns)
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -803,14 +817,14 @@ class TestAgoraClient(object):
         assert (submit_req.invoice_list.invoices[1].SerializeToString() ==
                 earns[1].invoice.to_proto().SerializeToString())
 
-    def test_submit_earn_batch_tx_failed(self, grpc_channel, executor, no_retry_client):
+    def test_submit_earn_batch_tx_failed(self, grpc_channel, executor, app_index_client):
         sender = kin_base.Keypair.random()
         earns = [
             Earn(kin_base.Keypair.random().raw_public_key(), 100000),
             Earn(kin_base.Keypair.random().raw_public_key(), 100000),
         ]
 
-        future = executor.submit(no_retry_client.submit_earn_batch, sender.raw_seed(), earns)
+        future = executor.submit(app_index_client.submit_earn_batch, sender.raw_seed(), earns)
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
@@ -836,7 +850,8 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(), sender,
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, sender,
                                          earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
@@ -874,8 +889,9 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == sender.address().decode()
 
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
-            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(),
+            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo,
                                              sender,
                                              earns)
             assert len(submit_req.invoice_list.invoices) == 0
@@ -914,8 +930,9 @@ class TestAgoraClient(object):
         for account_req in account_reqs:
             assert account_req.account_id.value == sender.address().decode()
 
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
-            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, memo.NoneMemo(),
+            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo,
                                              sender,
                                              earns)
             assert len(submit_req.invoice_list.invoices) == 0
