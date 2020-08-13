@@ -1,0 +1,33 @@
+version: 2
+
+jobs:
+  build:
+    working_directory: ~/kin-python-internal
+    docker:
+      - image: circleci/python:3.6
+        environment:
+          TEST_RESULTS: /tmp/test-results
+
+    steps:
+      - checkout
+      - run: mkdir -p $TEST_RESULTS
+      - restore_cache:
+          key: deps-1-{{ checksum "requirements.txt" }}-{{ checksum "requirements.dev.txt" }}
+      - run:
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            make deps deps-dev
+      - save_cache:
+          key: deps-1-{{ checksum "requirements.txt" }}-{{ checksum "requirements.dev.txt" }}
+          paths:
+              - "venv"
+      - run:
+          command: |
+            . venv/bin/activate
+            python3 -m pytest --timeout=10 --cov=agora --cov-report term-missing --junitxml=$TEST_RESULTS/unit-tests.xml -o junit_family=xunit1 tests .
+      - store_artifacts:
+          path: /tmp/test-results
+          destination: tr1
+      - store_test_results:
+          path: /tmp/test-results
