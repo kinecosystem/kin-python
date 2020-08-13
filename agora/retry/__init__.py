@@ -2,7 +2,7 @@ from typing import List, Callable
 
 from agora.retry.backoff import Backoff, ConstantBackoff, LinearBackoff, ExponentialBackoff, BinaryExponentialBackoff
 from agora.retry.strategy import Strategy, LimitStrategy, RetriableErrorsStrategy, NonRetriableErrorsStrategy, \
-    Backoff, BackoffWithJitterStrategy
+    BackoffStrategy, BackoffWithJitterStrategy
 
 
 def retry(strategies: List[Strategy], f: Callable, *args, **kwargs):
@@ -31,15 +31,15 @@ def retry(strategies: List[Strategy], f: Callable, *args, **kwargs):
 
 __all__ = [
     'retry',
-    'Strategy',
-    'LimitStrategy',
-    'RetriableErrorsStrategy',
-    'NonRetriableErrorsStrategy',
-    'Backoff',
-    'BackoffWithJitterStrategy',
     'Backoff',
     'ConstantBackoff',
     'LinearBackoff',
     'ExponentialBackoff',
-    'BinaryExponentialBackoff'
+    'BinaryExponentialBackoff',
+    'Strategy',
+    'LimitStrategy',
+    'RetriableErrorsStrategy',
+    'NonRetriableErrorsStrategy',
+    'BackoffStrategy',
+    'BackoffWithJitterStrategy',
 ]
