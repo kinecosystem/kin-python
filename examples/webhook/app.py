@@ -5,8 +5,8 @@ from typing import List
 import kin_base
 from flask import Flask, request
 
-from agora.client.utils import public_key_to_address
 from agora.error import InvoiceErrorReason
+from agora.utils import public_key_to_address
 from agora.webhook.events import Event
 from agora.webhook.handler import WebhookHandler, AGORA_HMAC_HEADER, APP_USER_ID_HEADER, APP_USER_PASSKEY_HEADER
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse

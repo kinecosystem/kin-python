@@ -15,7 +15,6 @@ from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
 from agora.client.client import Client, RetryConfig, BaseClient
 from agora.client.environment import Environment
-from agora.client.utils import kin_str_to_quarks, quarks_to_kin_str
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     InsufficientBalanceError, DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
     TransactionRejectedError, TransactionError, Error
@@ -24,7 +23,7 @@ from agora.model.invoice import InvoiceList, Invoice, LineItem
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
-from agora.utils import partition
+from agora.utils import partition, kin_str_to_quarks, quarks_to_kin_str
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
     gen_payment_op_result, gen_result_xdr, gen_hash_memo, gen_text_memo
 

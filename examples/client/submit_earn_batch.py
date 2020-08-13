@@ -3,8 +3,8 @@ import argparse
 import kin_base
 
 from agora.client import Client, RetryConfig, Environment
-from agora.client.utils import public_key_to_address
 from agora.model import Earn, Invoice, LineItem
+from agora.utils import public_key_to_address
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-s", "--sender", required=True, help="The private seed of the sender account")

@@ -1,6 +1,6 @@
 import kin_base
 
-from agora.client.utils import quarks_to_kin_str, public_key_to_address, kin_str_to_quarks
+from agora.utils import kin_str_to_quarks, quarks_to_kin_str, public_key_to_address
 
 
 class TestUtil(object):

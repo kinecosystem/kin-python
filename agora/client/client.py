@@ -9,7 +9,6 @@ from agoraapi.common.v3 import model_pb2
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb, transaction_service_pb2_grpc as tx_pb_grpc
 
 from agora.client.environment import Environment
-from agora.client.utils import public_key_to_address, quarks_to_kin_str
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
     DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
@@ -23,7 +22,7 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy, Strategy
-from agora.utils import partition
+from agora.utils import partition, quarks_to_kin_str, public_key_to_address
 
 _SUPPORTED_VERSIONS = [3]
 
