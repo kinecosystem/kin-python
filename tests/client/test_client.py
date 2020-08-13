@@ -211,54 +211,7 @@ class TestAgoraClient(object):
 
         assert request.transaction_hash.value == tx_hash
 
-    def test_get_transaction_failed(self, grpc_channel, executor, no_retry_client):
-        tx_hash = b'somehash'
-        future = executor.submit(no_retry_client.get_transaction, tx_hash)
-
-        _, request, rpc = grpc_channel.take_unary_unary(
-            tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
-        )
-
-        # Create full response
-        op_result = gen_payment_op_result(xdr_const.PAYMENT_UNDERFUNDED)
-        result_xdr = gen_result_xdr(xdr_const.txFAILED, [op_result])
-
-        text_memo = gen_text_memo(b'somememo')
-
-        acc1 = gen_account_id()
-        acc2 = gen_account_id()
-        operations = [gen_payment_op(acc2, amount=15)]
-        envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, text_memo)
-
-        history_item = tx_pb.HistoryItem(
-            hash=model_pb2.TransactionHash(value=tx_hash),
-            result_xdr=result_xdr,
-            envelope_xdr=envelope_xdr,
-            cursor=tx_pb.Cursor(value=b'cursor1'),
-        )
-        resp = tx_pb.GetTransactionResponse(
-            state=tx_pb.GetTransactionResponse.State.FAILED,
-            ledger=10,
-            item=history_item,
-        )
-        rpc.terminate(resp, (), grpc.StatusCode.OK, '')
-
-        tx_data = future.result()
-        assert tx_data.tx_hash == tx_hash
-        assert len(tx_data.payments) == 1
-        assert isinstance(tx_data.error.tx_error, Error)
-        assert isinstance(tx_data.error.op_errors[0], InsufficientBalanceError)
-
-        payment1 = tx_data.payments[0]
-        assert payment1.sender == acc1.ed25519
-        assert payment1.dest == acc2.ed25519
-        assert payment1.payment_type == TransactionType.UNKNOWN
-        assert payment1.quarks == 15
-        assert payment1.memo == 'somememo'
-
-        assert request.transaction_hash.value == tx_hash
-
-    def test_get_transaction_no_data(self, grpc_channel, executor, no_retry_client):
+    def test_get_transaction_unknown(self, grpc_channel, executor, no_retry_client):
         tx_hash = b'somehash'
         future = executor.submit(no_retry_client.get_transaction, tx_hash)
 

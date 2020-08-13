@@ -219,7 +219,7 @@ class Client(BaseClient):
             )
         ), timeout=_GRPC_TIMEOUT_SECONDS)
 
-        if resp.state in [tx_pb.GetTransactionResponse.State.SUCCESS, tx_pb.GetTransactionResponse.State.FAILED]:
+        if resp.state == tx_pb.GetTransactionResponse.State.SUCCESS:
             return TransactionData.from_proto(resp.item)
 
         raise Error("Unexpected transaction state from Agora: %d", resp.state)
