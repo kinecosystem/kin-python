@@ -18,19 +18,19 @@ _TEST_PRIVATE_KEY = PrivateKey.random()
 
 class TestWebhookHandler(object):
     def test_is_valid_signature(self):
-        secret = b'secret'
+        secret = 'secret'
         handler = WebhookHandler(secret=secret)
 
         req_body = 'somebody'
-        sig = base64.b64encode(hmac.new(secret, req_body.encode(), hashlib.sha256).digest())
+        sig = base64.b64encode(hmac.new(secret.encode(), req_body.encode(), hashlib.sha256).digest())
 
         assert handler.is_valid_signature(req_body, sig)
 
-        other_sig = base64.b64encode(hmac.new(secret, b'', hashlib.sha256).digest())
+        other_sig = base64.b64encode(hmac.new(secret.encode(), b'', hashlib.sha256).digest())
         assert not handler.is_valid_signature(req_body, other_sig)
 
     def test_handle_event(self):
-        secret = b'secret'
+        secret = 'secret'
         handler = WebhookHandler(secret=secret)
 
         data = [{
@@ -40,8 +40,8 @@ class TestWebhookHandler(object):
             }
         }]
         req_body = json.dumps(data)
-        sig = base64.b64encode(hmac.new(secret, req_body.encode(), hashlib.sha256).digest())
-        text_sig = base64.b64encode(hmac.new(secret, b'someotherdata', hashlib.sha256).digest())
+        sig = base64.b64encode(hmac.new(secret.encode(), req_body.encode(), hashlib.sha256).digest())
+        text_sig = base64.b64encode(hmac.new(secret.encode(), b'someotherdata', hashlib.sha256).digest())
 
         # invalid signature
         status_code, resp_body = handler.handle_events(self._event_return_none, text_sig, req_body)
@@ -73,7 +73,7 @@ class TestWebhookHandler(object):
         assert status_code == 200
 
     def test_handle_sign_transaction(self):
-        secret = b'secret'
+        secret = 'secret'
         handler = WebhookHandler(secret=secret)
 
         acc1 = gen_account_id()
@@ -86,8 +86,8 @@ class TestWebhookHandler(object):
             'envelope_xdr': base64.b64encode(envelope_xdr).decode()
         }
         req_body = json.dumps(data)
-        sig = base64.b64encode(hmac.new(secret, req_body.encode(), hashlib.sha256).digest())
-        text_sig = base64.b64encode(hmac.new(secret, b'someotherdata', hashlib.sha256).digest())
+        sig = base64.b64encode(hmac.new(secret.encode(), req_body.encode(), hashlib.sha256).digest())
+        text_sig = base64.b64encode(hmac.new(secret.encode(), b'someotherdata', hashlib.sha256).digest())
 
         # invalid signature
         status_code, resp_body = handler.handle_sign_transaction(self._sign_tx_success, text_sig, req_body)

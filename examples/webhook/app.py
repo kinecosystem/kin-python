@@ -18,7 +18,7 @@ webhook_secret = os.environ.get("WEBHOOK_SECRET")
 webhook_seed = os.environ.get("WEBHOOK_SEED")
 webhook_private_key = PrivateKey.from_string(webhook_seed)
 
-webhook_handler = WebhookHandler(webhook_secret.encode('utf-8'))
+webhook_handler = WebhookHandler(webhook_secret)
 
 
 @app.route('/events', methods=['POST'])

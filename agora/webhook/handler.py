@@ -21,7 +21,7 @@ class WebhookHandler(object):
     :param secret: The secret used to verify request signatures.
     """
 
-    def __init__(self, secret: Optional[bytes] = None):
+    def __init__(self, secret: Optional[str] = None):
         self.secret = secret
 
     def is_valid_signature(self, req_body: str, signature: str) -> bool:
@@ -32,7 +32,7 @@ class WebhookHandler(object):
         :return: A bool indicating whether or not the signature is valid.
         """
         decoded_sig = base64.b64decode(signature)
-        calculated_sig = hmac.new(self.secret, req_body.encode(), hashlib.sha256).digest()
+        calculated_sig = hmac.new(self.secret.encode(), req_body.encode(), hashlib.sha256).digest()
         return hmac.compare_digest(calculated_sig, decoded_sig)
 
     def handle_events(self, f: Callable[[List[Event]], None], signature: str, req_body: str) -> Tuple[int, str]:
