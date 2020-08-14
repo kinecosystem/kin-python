@@ -4,7 +4,7 @@ from typing import List, Optional
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base import transaction_envelope as te
 
-from agora.error import TransactionError
+from agora.error import TransactionErrors
 from agora.model.payment import ReadOnlyPayment
 
 
@@ -19,7 +19,7 @@ class TransactionData(object):
     """
 
     def __init__(
-        self, tx_hash: bytes, payments: List[ReadOnlyPayment] = None, error: Optional[TransactionError] = None
+        self, tx_hash: bytes, payments: List[ReadOnlyPayment] = None, error: Optional[TransactionErrors] = None
     ):
         self.tx_hash = tx_hash
         self.payments = payments if payments else []
@@ -37,7 +37,7 @@ class TransactionData(object):
     def from_proto(cls, item: tx_pb.HistoryItem) -> 'TransactionData':
         data = cls(
             item.hash.value,
-            error=TransactionError.from_result(item.result_xdr),
+            error=TransactionErrors.from_result(item.result_xdr),
         )
         if item.envelope_xdr:
             env = te.TransactionEnvelope.from_xdr(base64.b64encode(item.envelope_xdr))

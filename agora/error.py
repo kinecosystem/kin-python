@@ -40,9 +40,11 @@ class TransactionMalformedError(Error):
     """Raised when the provided transaction was malformed in some way.
     """
 
+
 class TransactionNotFound(Error):
     """Raised when no transaction data for a specified transaction could be found.
     """
+
 
 class InvalidSignatureError(Error):
     """Raised when the submitted transaction is either missing signatures or
@@ -116,6 +118,21 @@ class OperationInvoiceError(Error):
         }
 
 
+class AlreadyPaidError(Error):
+    """Raised when an invoice has already been paid.
+    """
+
+
+class WrongDestinationError(Error):
+    """Raised when a transaction was rejected by the app webhook for having a wrong destination.
+    """
+
+
+class SkuNotFoundError(Error):
+    """Raised when an invoice contains a SKU that could not be found.
+    """
+
+
 class TransactionRejectedError(Error):
     """Raised when the submitted transaction was rejected by a configured webhook.
     """
@@ -130,7 +147,7 @@ class InvoiceError(Error):
         self.errors = errors
 
 
-class TransactionError(Error):
+class TransactionErrors:
     """Contains the details of a failed transaction.
 
     :param tx_error: (optional) A :class:`Error <Error>` object. If present, the transaction failed. Otherwise, it was
@@ -148,7 +165,7 @@ class TransactionError(Error):
         self.op_errors = op_errors if op_errors else []
 
     @staticmethod
-    def from_result(result_xdr: bytes) -> Optional['TransactionError']:
+    def from_result(result_xdr: bytes) -> Optional['TransactionErrors']:
         """Returns a :class:`TransactionResultErrors <TransactionResultErrors>` object from a base64-encoded transaction
         result XDR from Agora.
 
@@ -197,27 +214,27 @@ class TransactionError(Error):
                 else:
                     op_errors.append(Error("op of type {} failed".format(op_result.tr.type)))
 
-            return TransactionError(tx_error=Error("transaction failed"), op_errors=op_errors)
+            return TransactionErrors(tx_error=Error("transaction failed"), op_errors=op_errors)
 
         if tx_code == StellarXDR_const.txMISSING_OPERATION:
-            return TransactionError(tx_error=TransactionMalformedError("the transaction has no operations"))
+            return TransactionErrors(tx_error=TransactionMalformedError("the transaction has no operations"))
 
         if tx_code == StellarXDR_const.txBAD_SEQ:
-            return TransactionError(tx_error=BadNonceError())
+            return TransactionErrors(tx_error=BadNonceError())
 
         if tx_code == StellarXDR_const.txBAD_AUTH:
-            return TransactionError(tx_error=InvalidSignatureError("missing signature or wrong network"))
+            return TransactionErrors(tx_error=InvalidSignatureError("missing signature or wrong network"))
 
         if tx_code == StellarXDR_const.txINSUFFICIENT_BALANCE:
-            return TransactionError(tx_error=InsufficientBalanceError())
+            return TransactionErrors(tx_error=InsufficientBalanceError())
 
         if tx_code == StellarXDR_const.txNO_ACCOUNT:
-            return TransactionError(tx_error=SenderDoesNotExistError())
+            return TransactionErrors(tx_error=SenderDoesNotExistError())
 
         if tx_code == StellarXDR_const.txINSUFFICIENT_FEE:
-            return TransactionError(tx_error=InsufficientFeeError())
+            return TransactionErrors(tx_error=InsufficientFeeError())
 
         if tx_code == StellarXDR_const.txBAD_AUTH_EXTRA:
-            return TransactionError(tx_error=InvalidSignatureError("unused signature attached"))
+            return TransactionErrors(tx_error=InvalidSignatureError("unused signature attached"))
 
-        return TransactionError(tx_error=Error("unknown result code: {}".format(tx_code)))
+        return TransactionErrors(tx_error=Error("unknown result code: {}".format(tx_code)))

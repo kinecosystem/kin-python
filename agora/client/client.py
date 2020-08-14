@@ -12,7 +12,8 @@ from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
     DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
-    OperationInvoiceError, TransactionRejectedError, TransactionError, TransactionNotFound, Error
+    TransactionRejectedError, TransactionErrors, TransactionNotFound, Error, AlreadyPaidError, \
+    WrongDestinationError, SkuNotFoundError
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
 from agora.model.keys import PrivateKey, PublicKey
@@ -146,6 +147,15 @@ class BaseClient(object):
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_earn_batch")
 
 
+class SubmitStellarTransactionResult:
+    def __init__(self, tx_hash: Optional[bytes] = None,
+                 invoice_errors: Optional[List[tx_pb.SubmitTransactionResponse.InvoiceError]] = None,
+                 tx_error: Optional[TransactionErrors] = None):
+        self.tx_hash = tx_hash if tx_hash else bytes(32)
+        self.invoice_errors = invoice_errors if invoice_errors else []
+        self.tx_error = tx_error
+
+
 class Client(BaseClient):
     """A :class:`Client <Client>` object for accessing Agora API features.
 
@@ -241,7 +251,58 @@ class Client(BaseClient):
         if payment.invoice and self.app_index <= 0:
             raise ValueError("cannot submit a payment with an invoice without an app index")
 
-        return self._retry(self.nonce_retry_strategies, self._submit_payment_tx, payment=payment)
+        builder = self._get_stellar_builder(payment.source if payment.source else payment.sender)
+
+        invoice_list = None
+        if payment.memo:
+            builder.add_text_memo(payment.memo)
+        elif self.app_index > 0:
+            if payment.invoice:
+                invoice_list = InvoiceList(invoices=[payment.invoice])
+
+            fk = invoice_list.get_sha_224_hash() if payment.invoice else b''
+            memo = AgoraMemo.new(1, payment.payment_type, self.app_index, fk)
+            builder.add_hash_memo(memo.val)
+
+        builder.append_payment_op(
+            payment.destination.address,
+            quarks_to_kin_str(payment.quarks),
+            source=payment.sender.public_key.address,
+        )
+
+        if payment.source:
+            signers = [payment.source, payment.sender]
+        else:
+            signers = [payment.sender]
+
+        if self.whitelist_key:
+            signers.append(self.whitelist_key)
+
+        result = self._sign_and_submit_builder(signers, builder, invoice_list)
+        if result.tx_error:
+            if len(result.tx_error.op_errors) > 0:
+                if len(result.tx_error.op_errors) != 1:
+                    raise Error("invalid number of operation errors, expected 0 or 1, got {}"
+                                .format(len(result.tx_error.op_errors)))
+                raise result.tx_error.op_errors[0]
+
+            if result.tx_error.tx_error:
+                raise result.tx_error.tx_error
+
+        if result.invoice_errors:
+            if len(result.invoice_errors) != 1:
+                raise Error("invalid number of invoice errors, expected 0 or 1, got {}"
+                            .format(len(result.invoice_errors)))
+
+            if result.invoice_errors[0].reason == InvoiceErrorReason.ALREADY_PAID:
+                raise AlreadyPaidError()
+            if result.invoice_errors[0].reason == InvoiceErrorReason.WRONG_DESTINATION:
+                raise WrongDestinationError()
+            if result.invoice_errors[0].reason == InvoiceErrorReason.SKU_NOT_FOUND:
+                raise SkuNotFoundError()
+            raise Error("unknown invoice error: {}".format(result.invoice_errors[0].reason))
+
+        return result.tx_hash
 
     def submit_earn_batch(
         self, sender: PrivateKey, earns: List[Earn], source: Optional[bytes] = None, memo: Optional[str] = None
@@ -260,73 +321,36 @@ class Client(BaseClient):
 
         succeeded = []
         failed = []
-        processed_batches = 0
         for earn_batch in partition(earns, 100):
-            if failed:
+            try:
+                result = self._submit_earn_batch_tx(sender, earn_batch, source, memo)
+            except Error as e:
+                failed += [EarnResult(earn, error=e) for idx, earn in enumerate(earn_batch)]
                 break
 
-            i = 1
-            while True:
-                earn_results = self._submit_earn_batch_tx(sender=sender, earns=earn_batch, source=source, memo=memo)
-                result_errors = [result.error for result in earn_results if result.error]
-                if not result_errors:
-                    succeeded += earn_results
-                    processed_batches += 1
-                    break
+            if not result.tx_error:
+                succeeded += [EarnResult(earn, tx_hash=result.tx_hash) for earn in earn_batch]
+                continue
 
-                should_retry = True
-                for e in result_errors:
-                    if not self._should_retry(self.nonce_retry_strategies, i, e):
-                        should_retry = False
-                        break
+            # At this point, the batch is considered failed.
+            err = result.tx_error
 
-                if not should_retry:
-                    failed += earn_results
-                    break
-
-                i += 1
+            if err.op_errors:
+                failed += [EarnResult(earn, tx_hash=result.tx_hash, error=err.op_errors[idx])
+                           for idx, earn in enumerate(earn_batch)]
+            else:
+                failed += [EarnResult(earn, tx_hash=result.tx_hash, error=err.tx_error)
+                           for idx, earn in enumerate(earn_batch)]
+            break
 
         for earn in earns[len(succeeded) + len(failed):]:
             failed.append(EarnResult(earn=earn))
 
         return BatchEarnResult(succeeded=succeeded, failed=failed)
 
-    def _submit_payment_tx(self, payment: Payment) -> bytes:
-        """ Submits a payment transaction.
-
-        :param payment: The :class:`Payment <agora.model.payment.Payment>` to submit.
-        :return: The transaction hash.
-        """
-        tx_source = payment.source if payment.source else payment.sender
-        builder = self._get_stellar_builder(tx_source)
-
-        if payment.memo:
-            builder.add_text_memo(payment.memo)
-        elif self.app_index > 0:
-            fk = InvoiceList(invoices=[payment.invoice]).get_sha_224_hash() if payment.invoice else b''
-            memo = AgoraMemo.new(1, payment.payment_type, self.app_index, fk)
-            builder.add_hash_memo(memo.val)
-
-        builder.append_payment_op(
-            payment.destination.address,
-            quarks_to_kin_str(payment.quarks),
-            source=payment.sender.public_key.address,
-        )
-
-        builder.sign(payment.sender.seed)
-
-        if payment.source:
-            builder.sign(tx_source.seed)
-
-        if self.whitelist_key:
-            builder.sign(self.whitelist_key.seed)
-
-        return self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()),
-                                                InvoiceList(invoices=[payment.invoice]) if payment.invoice else None)
-
     def _submit_earn_batch_tx(
         self, sender: PrivateKey, earns: List[Earn], source: Optional[PrivateKey] = None, memo: Optional[str] = None
-    ) -> List[EarnResult]:
+    ) -> SubmitStellarTransactionResult:
         """ Submits a single transaction for a batch of earns. An error will be raised if the number of earns exceeds
         the capacity of a single transaction.
 
@@ -342,14 +366,14 @@ class Client(BaseClient):
         if len(earns) > 100:
             raise ValueError("cannot send more than 100 earns")
 
-        tx_source = source if source else sender
-        builder = self._get_stellar_builder(tx_source)
+        builder = self._get_stellar_builder(source if source else sender)
 
         invoices = [earn.invoice for earn in earns if earn.invoice]
+        invoice_list = InvoiceList(invoices) if invoices else None
         if memo:
             builder.add_text_memo(memo)
         elif self.app_index > 0:
-            fk = InvoiceList(invoices=invoices).get_sha_224_hash() if invoices else b''
+            fk = invoice_list.get_sha_224_hash() if invoice_list else b''
             memo = AgoraMemo.new(1, TransactionType.EARN, self.app_index, fk)
             builder.add_hash_memo(memo.val)
 
@@ -360,27 +384,39 @@ class Client(BaseClient):
                 source=sender.public_key.address,
             )
 
-        builder.sign(sender.seed)
-
         if source:
-            builder.sign(tx_source.seed)
+            signers = [source, sender]
+        else:
+            signers = [sender]
 
         if self.whitelist_key:
-            builder.sign(self.whitelist_key.seed)
+            signers.append(self.whitelist_key)
 
-        tx_hash = builder.hash()
+        result = self._sign_and_submit_builder(signers, builder, invoice_list)
+        if result.invoice_errors:
+            # Invoice errors should not be triggered on earns. This indicates there is something wrong with the service.
+            raise Error("unexpected invoice errors present")
 
-        try:
-            tx_hash = self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()),
-                                                       InvoiceList(invoices) if invoices else None)
-            return [EarnResult(earn, tx_hash=tx_hash) for earn in earns]
-        except TransactionError as e:
-            return [EarnResult(earn, tx_hash=tx_hash, error=e.op_errors[idx] if e.op_errors else e.tx_error)
-                    for idx, earn in enumerate(earns)]
-        except InvoiceError as e:
-            return [EarnResult(earn, tx_hash=tx_hash, error=e.errors[idx]) for idx, earn in enumerate(earns)]
-        except Exception as e:
-            return [EarnResult(earn, tx_hash=tx_hash, error=e) for earn in earns]
+        return result
+
+    def _sign_and_submit_builder(
+        self, signers: List[PrivateKey], builder: kin_base.Builder, invoice_list: Optional[InvoiceList] = None
+    ) -> SubmitStellarTransactionResult:
+        def _sign_and_submit():
+            builder.te = None  # reset the envelope
+            source_info = self._get_stellar_account_info(signers[0].public_key)
+            builder.sequence = source_info.sequence_number + 1
+
+            for signer in signers:
+                builder.sign(signer.seed)
+
+            result = self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
+            if result.tx_error and isinstance(result.tx_error.tx_error, BadNonceError):
+                raise result.tx_error.tx_error
+
+            return result
+
+        return self._retry(self.nonce_retry_strategies, _sign_and_submit)
 
     def _create_stellar_account(self, private_key: PrivateKey):
         """Submits a request to Agora to create a Stellar account.
@@ -417,16 +453,13 @@ class Client(BaseClient):
         :param source: The transaction source account.
         :return: a :class:`Builder` <kin_base.Builder> object.
         """
-        source_info = self._get_stellar_account_info(source.public_key)
-
         return kin_base.Builder(self._horizon, self.network_name,
                                 100,
-                                source.seed,
-                                sequence=source_info.sequence_number + 1)
+                                source.seed)
 
     def _submit_stellar_transaction(
         self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None
-    ) -> bytes:
+    ) -> SubmitStellarTransactionResult:
         """Submit a stellar transaction to Agora.
         :param tx_bytes: The transaction envelope xdr, in bytes
         :param invoice_list: (optional) An :class:`InvoiceList <agora.model.invoice.InvoiceList>` to associate with the
@@ -440,25 +473,23 @@ class Client(BaseClient):
         """
 
         def _submit():
-            resp = self.transaction_stub.SubmitTransaction(tx_pb.SubmitTransactionRequest(
+            req = tx_pb.SubmitTransactionRequest(
                 envelope_xdr=tx_bytes,
                 invoice_list=invoice_list.to_proto() if invoice_list else None,
-            ), timeout=_GRPC_TIMEOUT_SECONDS)
+            )
+            resp = self.transaction_stub.SubmitTransaction(req, timeout=_GRPC_TIMEOUT_SECONDS)
 
+            result = SubmitStellarTransactionResult(tx_hash=resp.hash.value)
             if resp.result == tx_pb.SubmitTransactionResponse.Result.REJECTED:
                 raise TransactionRejectedError()
-            if resp.result == tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR:
-                raise InvoiceError([
-                    OperationInvoiceError(
-                        e.op_index,
-                        InvoiceErrorReason.from_proto(e.reason))
-                    for e in resp.invoice_errors
-                ])
+            elif resp.result == tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR:
+                result.invoice_errors = resp.invoice_errors
+            elif resp.result == tx_pb.SubmitTransactionResponse.Result.FAILED:
+                result.tx_error = TransactionErrors.from_result(resp.result_xdr)
+            elif resp.result != tx_pb.SubmitTransactionResponse.Result.OK:
+                raise Error("unexpected result from agora: {}".format(resp.result))
 
-            if resp.result != tx_pb.SubmitTransactionResponse.Result.OK:
-                raise TransactionError.from_result(resp.result_xdr)
-
-            return resp.hash.value
+            return result
 
         return self._retry(self.retry_strategies, _submit)
 
@@ -497,7 +528,7 @@ class Client(BaseClient):
         if not retry_strategies:
             return False
 
-        if isinstance(e, TransactionError):
+        if isinstance(e, TransactionErrors):
             for s in retry_strategies:
                 if not s.should_retry(attempt, e.tx_error):
                     return False

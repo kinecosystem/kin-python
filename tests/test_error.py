@@ -4,7 +4,7 @@ from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
 from agora.error import AccountExistsError, BadNonceError, DestinationDoesNotExistError, InsufficientBalanceError, \
     InsufficientFeeError, InvalidSignatureError, SenderDoesNotExistError, TransactionMalformedError, \
-    InvoiceErrorReason, Error, TransactionError
+    InvoiceErrorReason, Error, TransactionErrors
 from tests.utils import gen_create_op_result, gen_payment_op_result, gen_merge_op_result, gen_result_xdr
 
 
@@ -32,7 +32,7 @@ class TestTransactionError(object):
     def test_from_result_success(self):
         op_result = gen_create_op_result(xdr_const.CREATE_ACCOUNT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result] if op_result else [])
-        assert not TransactionError.from_result(result_xdr)
+        assert not TransactionErrors.from_result(result_xdr)
 
     @pytest.mark.parametrize(
         "tx_result_code, op_type, op_result_code, op_error_type",
@@ -68,7 +68,7 @@ class TestTransactionError(object):
 
         result_xdr = gen_result_xdr(tx_result_code, [op_result] if op_result else [])
 
-        te = TransactionError.from_result(result_xdr)
+        te = TransactionErrors.from_result(result_xdr)
         assert isinstance(te.tx_error, Error)
         assert isinstance(te.op_errors[0], op_error_type)
 
@@ -91,13 +91,13 @@ class TestTransactionError(object):
         self, tx_result_code: int, exception_type: type
     ):
         result_xdr = gen_result_xdr(tx_result_code, [])
-        assert isinstance(TransactionError.from_result(result_xdr).tx_error, exception_type)
+        assert isinstance(TransactionErrors.from_result(result_xdr).tx_error, exception_type)
 
     def test_error_from_result_other_op(self):
         op_result = gen_merge_op_result(xdr_const.ACCOUNT_MERGE_MALFORMED)
         result_xdr = gen_result_xdr(xdr_const.txFAILED, [op_result])
 
-        te = TransactionError.from_result(result_xdr)
+        te = TransactionErrors.from_result(result_xdr)
         assert isinstance(te.tx_error, Error)
         assert isinstance(te.op_errors[0], Error)
 
@@ -110,7 +110,7 @@ class TestTransactionError(object):
 
         result_xdr = gen_result_xdr(xdr_const.txFAILED, op_results)
 
-        te = TransactionError.from_result(result_xdr)
+        te = TransactionErrors.from_result(result_xdr)
         assert isinstance(te.tx_error, Error)
         assert not te.op_errors[0]
         assert isinstance(te.op_errors[1], TransactionMalformedError)

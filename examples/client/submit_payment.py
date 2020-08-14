@@ -1,7 +1,7 @@
 import argparse
 
 from agora.client import Client, RetryConfig, Environment
-from agora.error import Error, TransactionError
+from agora.error import Error, TransactionErrors
 from agora.model import Invoice, LineItem, Payment, TransactionType, PrivateKey, PublicKey
 
 
@@ -13,7 +13,7 @@ def submit_payment(p: Payment):
         print("transaction successfully submitted with hash: {}".format(tx_hash.hex()))
     except Error as e:
         print("transaction failed: {}".format(repr(e)))
-        if isinstance(e, TransactionError):
+        if isinstance(e, TransactionErrors):
             print("tx_error={}, len(op_errors)={}".format(repr(e.tx_error), len(e.op_errors)))
             for op_error in e.op_errors:
                 print("op_error={}".format(repr(op_error)))

@@ -13,12 +13,12 @@ from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
 from agora.client.client import Client, RetryConfig, BaseClient
 from agora.client.environment import Environment
-from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
-    InsufficientBalanceError, DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
-    TransactionRejectedError, TransactionError, TransactionNotFound, Error
+from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBalanceError, \
+    DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
+    TransactionRejectedError, TransactionNotFound, Error, AlreadyPaidError
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList, Invoice, LineItem
-from agora.model.keys import PrivateKey, PublicKey
+from agora.model.keys import PrivateKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
@@ -306,7 +306,7 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == source.public_key.address
 
-        expected_signers = [sender, source]
+        expected_signers = [source, sender]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, expected_memo,
                                       payment)
@@ -432,13 +432,8 @@ class TestAgoraClient(object):
         )
         submit_req = self._set_submit_transaction_response(grpc_channel, resp)
 
-        with pytest.raises(InvoiceError) as excinfo:
+        with pytest.raises(AlreadyPaidError):
             future.result()
-
-            e = excinfo.value
-            assert len(e.errors) == 1
-            assert e.errors[0].op_index == 0
-            assert e.errors[0].reason == InvoiceErrorReason.ALREADY_PAID
 
         assert account_req.account_id.value == sender.public_key.address
 
@@ -466,7 +461,7 @@ class TestAgoraClient(object):
         )
         submit_req = self._set_submit_transaction_response(grpc_channel, resp)
 
-        with pytest.raises(TransactionError):
+        with pytest.raises(InsufficientBalanceError):
             future.result()
 
         assert account_req.account_id.value == sender.public_key.address
@@ -484,12 +479,9 @@ class TestAgoraClient(object):
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
-        result_xdr = gen_result_xdr(xdr_const.txINTERNAL_ERROR, [])
         resp = tx_pb.SubmitTransactionResponse(
-            result=tx_pb.SubmitTransactionResponse.Result.FAILED,
+            result=5,  # invalid result code, should throw an error
             hash=model_pb2.TransactionHash(value=b'somehash'),
-            ledger=10,
-            result_xdr=result_xdr,
         )
 
         submit_reqs = []
@@ -498,7 +490,7 @@ class TestAgoraClient(object):
             # the expected number of times.
             submit_reqs.append(self._set_submit_transaction_response(grpc_channel, resp))
 
-        with pytest.raises(TransactionError):
+        with pytest.raises(Error):
             future.result()
 
         assert account_req.account_id.value == sender.public_key.address
@@ -531,7 +523,7 @@ class TestAgoraClient(object):
             account_reqs.append(self._set_successful_get_account_info_response(grpc_channel, sender, 10))
             submit_reqs.append(self._set_submit_transaction_response(grpc_channel, resp))
 
-        with pytest.raises(TransactionError):
+        with pytest.raises(BadNonceError):
             future.result()
 
         for account_req in account_reqs:
@@ -602,7 +594,7 @@ class TestAgoraClient(object):
 
         assert account_req.account_id.value == source.public_key.address
 
-        expected_signers = [sender, source]
+        expected_signers = [source, sender]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, expected_memo,
                                          sender, earns)
@@ -758,7 +750,7 @@ class TestAgoraClient(object):
 
         for idx, earn_result in enumerate(batch_earn_result.failed):
             assert earn_result.earn == earns[idx]
-            assert earn_result.tx_hash  # make sure it's set
+            assert not earn_result.tx_hash
             assert isinstance(earn_result.error, TransactionRejectedError)
 
         assert account_req.account_id.value == sender.public_key.address
@@ -802,11 +794,10 @@ class TestAgoraClient(object):
         assert len(batch_earn_result.succeeded) == 0
         assert len(batch_earn_result.failed) == 2
 
-        expected_reasons = [InvoiceErrorReason.ALREADY_PAID, InvoiceErrorReason.WRONG_DESTINATION]
         for idx, earn_result in enumerate(batch_earn_result.failed):
             assert earn_result.earn == earns[idx]
-            assert earn_result.tx_hash  # make sure it's set
-            assert earn_result.error.reason, expected_reasons[idx]
+            assert not earn_result.tx_hash
+            assert isinstance(earn_result.error, Error)
 
         assert account_req.account_id.value == sender.public_key.address
 
@@ -867,13 +858,9 @@ class TestAgoraClient(object):
 
         account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
 
-        result_xdr = gen_result_xdr(xdr_const.txINTERNAL_ERROR, [])
-
         resp = tx_pb.SubmitTransactionResponse(
-            result=tx_pb.SubmitTransactionResponse.Result.FAILED,
+            result=5,  # invalid result code, should throw an error
             hash=model_pb2.TransactionHash(value=b'somehash'),
-            ledger=10,
-            result_xdr=result_xdr,
         )
 
         submit_reqs = []
@@ -887,7 +874,7 @@ class TestAgoraClient(object):
         assert len(batch_earn_result.failed) == 1
 
         earn_result = batch_earn_result.failed[0]
-        assert earn_result.tx_hash  # make sure it's set
+        assert not earn_result.tx_hash
         assert earn_result.earn == earns[0]
         assert isinstance(earn_result.error, Error)
 
@@ -927,7 +914,7 @@ class TestAgoraClient(object):
         assert len(batch_earn_result.failed) == 1
 
         earn_result = batch_earn_result.failed[0]
-        assert earn_result.tx_hash  # make sure it's set
+        assert not earn_result.tx_hash
         assert earn_result.earn == earns[0]
         assert isinstance(earn_result.error, BadNonceError)
 
