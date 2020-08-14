@@ -14,7 +14,7 @@ pip install kin-sdk-v2
 ## Overview
 The SDK contains two main components: the `Client` and the `WebhookHandler`. The `Client` is used for blockchain
 actions, such as creating accounts sending payments, while the `WebhookHandler` is meant for developers who wish to make
-use of Agora Webhooks. For a high-level overview of using Agora, please refer to the website documentation (TODO: hyperlink).
+use of Agora Webhooks. For a high-level overview of how to integrate Kin and make use of Agora, please refer to the [website documentation](https://docs.kin.org).
 
 ## Client
 The main component of this library is the `Client` class, which facilitates access to the Kin blockchain. 
@@ -27,7 +27,7 @@ from agora.client import Client, Environment
 client = Client(Environment.TEST)
 ```
 
-Apps with registered (TODO: hyperlink) app indexes should initialize the client with their index:
+Apps with [registered](https://docs.kin.org/app-registration) app indexes should initialize the client with their index:
 ```python
 from agora.client import Client, Environment
 client = Client(Environment.TEST, app_index=1)
@@ -81,7 +81,7 @@ A `Payment` has the following required properties:
 
 Additionally, it has some optional properties:
 - `source`: The private key of a source account to use for the transaction. If unset, `sender` will be used as the transaction source.
-- `invoice`: An Invoice (TODO: hyperlink) to associate with this payment. Cannot be set if `memo` is set.
+- `invoice`: An [Invoice](https://docs.kin.org/how-it-works#invoices) to associate with this payment. Cannot be set if `memo` is set.
 - `memo` A text memo to include in the transaction. Cannot be set if `invoice` is set.
 
 #### Submit an Earn Batch
@@ -106,7 +106,7 @@ batch_earn_result = client.submit_earn_batch(b'sender_private_key`, earns)
 A single `Earn` has the following properties:
 - `destination`: The public key of the account to which the earn will be sent.
 - `quarks`: The amount of the earn, in quarks.
-- `invoice`: (optional) An Invoice (TODO: hyperlink) to associate with this earn.
+- `invoice`: (optional) An [Invoice](https://docs.kin.org/how-it-works#invoices) to associate with this earn.
 
 The `submit_earn_batch` method has the following parameters:
 - `sender`:  The private key of the account from which the earns will be sent.
@@ -118,12 +118,12 @@ The `submit_earn_batch` method has the following parameters:
 A few examples for creating an account and different ways of submitting payments and batched earns can be found in `examples/client`.
 
 ## Webhook Handler
-The `WebhookHandler` class is designed to assist developers with implementing the Agora webhooks (TODO: hyperlink). 
+The `WebhookHandler` class is designed to assist developers with implementing the [Agora webhooks](https://docs.kin.org/how-it-works#webhooks). 
 
-Only apps that have been assigned an app index (TODO: hyperlink) can make use of Agora webhooks.   
+Only apps that have been assigned an [app index](https://docs.kin.org/app-registration) can make use of Agora webhooks.   
 
 ### Initialization
-The `WebhookHandler` must be instantiated with the app's configured webhook secret (TODO: hyperlink).
+The `WebhookHandler` must be instantiated with the app's configured [webhook secret](https://docs.kin.org/agora/webhook#authentication).
 ```python
 from agora.webhook.handler import WebhookHandler
 
@@ -132,8 +132,8 @@ webhook_handler = WebhookHandler(b'mysecret')
 
 ### Usage
 Currently, `WebhookHandler` contains support for the following webhooks:
-- Events (TODO: hyperlink), with `handle_events`
-- Sign Transaction (TODO: hyperlink), with `handle_sign_transaction`
+- [Events](https://docs.kin.org/how-it-works#events), with `handle_events`
+- [Sign Transaction](https://docs.kin.org/how-it-works#sign-transaction), with `handle_sign_transaction`
 
 #### Events Webhook
 To use the `WebhookHandler` with the Events webhook, developers should define a function that accepts a list of events and processes them in some way:
@@ -176,7 +176,7 @@ def events_endpoint_func(request):
 
 `WebhookHandler.handle_events` takes in the following mandatory parameters:
 - `f`: A function that accepts a list of Events. Any return value will be ignored.
-- `signature`: The base64-encoded signature included as the `X-Agora-HMAC-SHA256` header in the HTTP request. (TODO: hyperlink authentication docs)
+- `signature`: The base64-encoded signature included as the `X-Agora-HMAC-SHA256` header in the HTTP request (see the [Agora Webhook Reference](https://docs.kin.org/agora/webhook) for more details).
 - `req_body`: The string request body.
 
 #### Sign Transaction Webhook 
@@ -213,7 +213,7 @@ def sign_tx_endpoint_func(request):
 
 `WebhookHandler.handle_sign_transaction` takes in the following mandatory parameters:
 - `f`: A function that takes in a SignTransactionRequest and a SignTransactionResponse. Any return value will be ignored.
-- `signature`: The base64-encoded signature included as the `X-Agora-HMAC-SHA256` header in the HTTP request. (TODO: hyperlink authentication docs)
+- `signature`: The base64-encoded signature included as the `X-Agora-HMAC-SHA256` header in the HTTP request (see the [Agora Webhook Reference](https://docs.kin.org/agora/webhook) for more details).
 - `req_body`: The string request body.
 
 ### Example Code
