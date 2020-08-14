@@ -1,17 +1,18 @@
 from typing import Optional
 
 from agora.model.invoice import Invoice
+from agora.model.keys import PublicKey
 
 
 class Earn(object):
     """The :class:`Earn <Earn>` object, which represents an earn payment that will get submitted.
 
-    :param destination: The public key, in raw bytes, of the account the earn will be sent to.
+    :param destination: The :class:`PublicKey <agora.model.keys.PublicKey` of the account the earn will be sent to.
     :param quarks: The amount being sent.
     :param invoice: (optional) An :class:`Invoice <agora.model.invoice.Invoice>` object to associate with this earn.
     """
 
-    def __init__(self, destination: bytes, quarks: int, invoice: Optional[Invoice] = None):
+    def __init__(self, destination: PublicKey, quarks: int, invoice: Optional[Invoice] = None):
         self.destination = destination
         self.quarks = quarks
         self.invoice = invoice

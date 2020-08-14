@@ -15,6 +15,7 @@ from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, 
     OperationInvoiceError, TransactionRejectedError, TransactionError, TransactionNotFound, Error
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
+from agora.model.keys import PrivateKey, PublicKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.result import BatchEarnResult, EarnResult
@@ -22,7 +23,7 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy, Strategy
-from agora.utils import partition, quarks_to_kin_str, public_key_to_address
+from agora.utils import partition, quarks_to_kin_str
 
 _SUPPORTED_VERSIONS = [3]
 
@@ -79,9 +80,10 @@ class BaseClient(object):
     """An interface for accessing Agora features.
     """
 
-    def create_account(self, private_key: bytes):
+    def create_account(self, private_key: PrivateKey):
         """Creates a new Kin account.
-        :param private_key: The private key, in raw bytes, of the account to create
+
+        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account to create
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountExistsError <agora.error.AccountExistsError>`
         """
@@ -95,10 +97,10 @@ class BaseClient(object):
         """
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement get_transaction")
 
-    def get_balance(self, public_key: bytes) -> int:
+    def get_balance(self, public_key: PublicKey) -> int:
         """Retrieves the balance of an account.
 
-        :param public_key: The public key, in raw bytes, of the account to retrieve the balance for.
+        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to retrieve the balance for.
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountNotFoundError <agora.error.AccountNotFoundError>`
         :return: The balance of the account, in quarks.
@@ -126,14 +128,14 @@ class BaseClient(object):
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_payment")
 
     def submit_earn_batch(
-        self, sender: bytes, earns: List[Earn], source: Optional[bytes] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, earns: List[Earn], source: Optional[PrivateKey] = None, memo: Optional[str] = None
     ) -> BatchEarnResult:
         """Submit multiple earn payments.
 
-        :param sender: The private key, in raw bytes, of the sender
+        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param source: (optional) The private key, in raw bytes, of the transaction source account. If not set, the
-            sender will be used as the source.
+        :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the transaction source
+            account. If not set, the sender will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
 
@@ -150,8 +152,8 @@ class Client(BaseClient):
     :param env: The :class:`Environment <agora.environment.Environment>` to use.
     :param app_index: (optional) The Agora index of the app, used for all transactions and requests. Required to make
         use of invoices.
-    :param whitelist_key: (optional) The private key, in raw bytes, of the account to whitelist submitted transactions
-        with.
+    :param whitelist_key: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account to whitelist
+        submitted transactions with.
     :param grpc_channel: (optional) A GRPC :class:`Channel <grpc.Channel>` object to use for Agora requests. Only one of
         grpc_channel or endpoint should be set.
     :param endpoint: (optional) An endpoint to use instead of the default Agora endpoints. Only one of grpc_channel or
@@ -161,7 +163,7 @@ class Client(BaseClient):
     """
 
     def __init__(
-        self, env: Environment, app_index: int = 0, whitelist_key: Optional[bytes] = None,
+        self, env: Environment, app_index: int = 0, whitelist_key: Optional[PrivateKey] = None,
         grpc_channel: Optional[grpc.Channel] = None, endpoint: Optional[str] = None,
         retry_config: Optional[RetryConfig] = None,
     ):
@@ -179,7 +181,7 @@ class Client(BaseClient):
         self.account_stub = account_pb_grpc.AccountStub(grpc_channel)
         self.transaction_stub = tx_pb_grpc.TransactionStub(grpc_channel)
 
-        self.whitelist_kp = (kin_base.Keypair.from_raw_seed(whitelist_key) if whitelist_key else None)
+        self.whitelist_key = whitelist_key
 
         self.retry_config = retry_config if retry_config else RetryConfig()
         self.retry_strategies = [
@@ -205,7 +207,7 @@ class Client(BaseClient):
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self._horizon.close())
 
-    def create_account(self, private_key: bytes):
+    def create_account(self, private_key: PrivateKey):
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError()
 
@@ -225,7 +227,7 @@ class Client(BaseClient):
 
         raise Error("Unexpected transaction state from Agora: %d", resp.state)
 
-    def get_balance(self, public_key: bytes) -> int:
+    def get_balance(self, public_key: PublicKey) -> int:
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError()
 
@@ -242,7 +244,7 @@ class Client(BaseClient):
         return self._retry(self.nonce_retry_strategies, self._submit_payment_tx, payment=payment)
 
     def submit_earn_batch(
-        self, sender: bytes, earns: List[Earn], source: Optional[bytes] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, earns: List[Earn], source: Optional[bytes] = None, memo: Optional[str] = None
     ) -> BatchEarnResult:
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError
@@ -305,34 +307,33 @@ class Client(BaseClient):
             memo = AgoraMemo.new(1, payment.payment_type, self.app_index, fk)
             builder.add_hash_memo(memo.val)
 
-        sender_kp = kin_base.Keypair.from_raw_seed(payment.sender)
         builder.append_payment_op(
-            public_key_to_address(payment.destination),
+            payment.destination.address,
             quarks_to_kin_str(payment.quarks),
-            source=sender_kp.address().decode(),
+            source=payment.sender.public_key.address,
         )
 
-        builder.sign(sender_kp.seed().decode())
+        builder.sign(payment.sender.seed)
 
         if payment.source:
-            builder.sign(kin_base.Keypair.from_raw_seed(tx_source).seed().decode())
+            builder.sign(tx_source.seed)
 
-        if self.whitelist_kp:
-            builder.sign(self.whitelist_kp.seed().decode())
+        if self.whitelist_key:
+            builder.sign(self.whitelist_key.seed)
 
         return self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()),
                                                 InvoiceList(invoices=[payment.invoice]) if payment.invoice else None)
 
     def _submit_earn_batch_tx(
-        self, sender: bytes, earns: List[Earn], source: Optional[bytes] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, earns: List[Earn], source: Optional[PrivateKey] = None, memo: Optional[str] = None
     ) -> List[EarnResult]:
         """ Submits a single transaction for a batch of earns. An error will be raised if the number of earns exceeds
         the capacity of a single transaction.
 
-        :param sender: The private key, in raw bytes, of the sender
+        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param source: (optional) The private key, in raw bytes, of the transaction source account. If not set, the
-            sender will be used as the source.
+        :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the transaction source
+            account. If not set, the sender will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
 
@@ -352,21 +353,20 @@ class Client(BaseClient):
             memo = AgoraMemo.new(1, TransactionType.EARN, self.app_index, fk)
             builder.add_hash_memo(memo.val)
 
-        sender_kp = kin_base.Keypair.from_raw_seed(sender)
         for earn in earns:
             builder.append_payment_op(
-                public_key_to_address(earn.destination),
+                earn.destination.address,
                 quarks_to_kin_str(earn.quarks),
-                source=sender_kp.address().decode(),
+                source=sender.public_key.address,
             )
 
-        builder.sign(sender_kp.seed().decode())
+        builder.sign(sender.seed)
 
         if source:
-            builder.sign(kin_base.Keypair.from_raw_seed(tx_source).seed().decode())
+            builder.sign(tx_source.seed)
 
-        if self.whitelist_kp:
-            builder.sign(self.whitelist_kp.seed().decode())
+        if self.whitelist_key:
+            builder.sign(self.whitelist_key.seed)
 
         tx_hash = builder.hash()
 
@@ -382,29 +382,28 @@ class Client(BaseClient):
         except Exception as e:
             return [EarnResult(earn, tx_hash=tx_hash, error=e) for earn in earns]
 
-    def _create_stellar_account(self, private_key: bytes):
+    def _create_stellar_account(self, private_key: PrivateKey):
         """Submits a request to Agora to create a Stellar account.
 
-        :param private_key: The private key, in raw bytes, of the account to create.
+        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account to create.
         """
-        kp = kin_base.Keypair.from_raw_seed(private_key)
         resp = self.account_stub.CreateAccount(account_pb.CreateAccountRequest(
             account_id=model_pb2.StellarAccountId(
-                value=kp.address().decode()
+                value=private_key.public_key.address
             )
         ), timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
             raise AccountExistsError()
 
-    def _get_stellar_account_info(self, public_key: bytes) -> account_pb.AccountInfo:
+    def _get_stellar_account_info(self, public_key: PublicKey) -> account_pb.AccountInfo:
         """Requests account info from Agora for a Stellar account.
 
-        :param public_key: The public key, in raw bytes, of the account to request the info for.
+        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to request the info for.
         :return: :class:`StellarAccountInfo <agora.client.stellar.account.AccountInfo>
         """
         resp = self.account_stub.GetAccountInfo(account_pb.GetAccountInfoRequest(
             account_id=model_pb2.StellarAccountId(
-                value=public_key_to_address(public_key)
+                value=public_key.address
             )
         ), timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
@@ -412,18 +411,17 @@ class Client(BaseClient):
 
         return resp.account_info
 
-    def _get_stellar_builder(self, source: bytes) -> kin_base.Builder:
+    def _get_stellar_builder(self, source: PrivateKey) -> kin_base.Builder:
         """Returns a Stellar transaction builder.
 
         :param source: The transaction source account.
         :return: a :class:`Builder` <kin_base.Builder> object.
         """
-        kp = kin_base.Keypair.from_raw_seed(source)
-        source_info = self._get_stellar_account_info(kp.raw_public_key())
+        source_info = self._get_stellar_account_info(source.public_key)
 
         return kin_base.Builder(self._horizon, self.network_name,
                                 100,
-                                kp.seed().decode(),
+                                source.seed,
                                 sequence=source_info.sequence_number + 1)
 
     def _submit_stellar_transaction(

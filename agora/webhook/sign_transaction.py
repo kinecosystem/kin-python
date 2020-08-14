@@ -7,6 +7,7 @@ from kin_base import transaction_envelope as te
 
 from agora.error import InvoiceErrorReason, OperationInvoiceError
 from agora.model.invoice import InvoiceList
+from agora.model.keys import PrivateKey
 from agora.model.payment import ReadOnlyPayment
 
 
@@ -68,12 +69,12 @@ class SignTransactionResponse(object):
         self.invoice_errors = []
         self.rejected = False
 
-    def sign(self, private_key: bytes):
+    def sign(self, private_key: PrivateKey):
         """Signs the transaction envelope with the provided account private key.
 
-        :param private_key: The account private key, in raw bytes.
+        :param private_key: The account :class:`PrivateKey <agora.model.keys.PrivateKey`
         """
-        kp = kin_base.Keypair.from_raw_seed(private_key)
+        kp = kin_base.Keypair.from_raw_seed(private_key.raw)
         self.envelope.sign(kp)
 
     def reject(self):

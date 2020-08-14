@@ -1,24 +1,24 @@
 from typing import Optional, List
 
-import kin_base
 from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te, operation, memo
 
-from agora.utils import kin_str_to_quarks
 from agora.model.invoice import Invoice
+from agora.model.keys import PrivateKey, PublicKey
 from agora.model.memo import AgoraMemo
 from agora.model.transaction_type import TransactionType
+from agora.utils import kin_str_to_quarks
 
 
 class Payment(object):
     """The :class:`Payment <Payment>` object, which represents a payment that will get submitted.
 
-    :param sender: The secret seed, in raw bytes, of the account from which funds will be sent.
-    :param destination: The public key, in raw bytes, of the account to which funds will be sent.
+    :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account from which funds will be sent.
+    :param destination: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to which funds will be sent.
     :param payment_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this payment.
     :param quarks: The amount being sent.
-    :param source: (optional) The secret seed, in raw bytes, of the account that will act as the source of the
-        transaction. If unset, the sender will be used as the transaction source.
+    :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account that will act as the
+        source of the transaction. If unset, the sender will be used as the transaction source.
 
         On Stellar, this is where the transaction fee and sequence number is taken/chosen from.
 
@@ -29,8 +29,8 @@ class Payment(object):
     """
 
     def __init__(
-        self, sender: bytes, destination: bytes, payment_type: TransactionType, quarks: int,
-        source: Optional[bytes] = None, invoice: Optional[Invoice] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, destination: PublicKey, payment_type: TransactionType, quarks: int,
+        source: Optional[PrivateKey] = None, invoice: Optional[Invoice] = None, memo: Optional[str] = None
     ):
         self.sender = sender
         self.destination = destination
@@ -61,8 +61,8 @@ class ReadOnlyPayment(object):
     """The :class:`ReadOnlyPayment <ReadOnlyPayment>` object, which represents a payment that was retrieved from
     history.
 
-    :param sender: The public key, in raw bytes, of the sending account.
-    :param dest: The public key, in raw bytes, of the destination account.
+    :param sender: The :class:`PublicKey <agora.model.keys.PublicKey` of the sending account.
+    :param dest: The :class:`PublicKey <agora.model.keys.PublicKey` of the destination account.
     :param payment_type: The type of this payment.
     :param quarks: The amount of the payment.
     :param invoice: (optional) The :class:`Invoice <agora.model.invoice.Invoice>` associated with this payment. Only one
@@ -71,8 +71,8 @@ class ReadOnlyPayment(object):
     """
 
     def __init__(
-        self, sender: bytes, dest: bytes, payment_type: TransactionType, quarks: int, invoice: Optional[Invoice] = None,
-        memo: Optional[str] = None
+        self, sender: PublicKey, dest: PublicKey, payment_type: TransactionType, quarks: int,
+        invoice: Optional[Invoice] = None, memo: Optional[str] = None
     ):
         self.sender = sender
         self.dest = dest
@@ -126,13 +126,11 @@ class ReadOnlyPayment(object):
             if not isinstance(op, operation.Payment):
                 continue
 
-            sender_kp = kin_base.Keypair.from_address(op.source if op.source else tx.source)
-            dest_kp = kin_base.Keypair.from_address(op.destination)
             inv = invoice_list.invoices[idx] if invoice_list and invoice_list.invoices else None
 
             payments.append(ReadOnlyPayment(
-                sender=sender_kp.raw_public_key(),
-                dest=dest_kp.raw_public_key(),
+                sender=PublicKey.from_string(op.source if op.source else tx.source.decode()),
+                dest=PublicKey.from_string(op.destination),
                 payment_type=agora_memo.tx_type() if agora_memo else
                 TransactionType.UNKNOWN,
                 quarks=kin_str_to_quarks(op.amount),

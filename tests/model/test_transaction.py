@@ -33,8 +33,8 @@ class TestTransaction(object):
         assert len(data.payments) == 1
 
         payment = data.payments[0]
-        assert payment.sender == tx_src.ed25519
-        assert payment.dest == dest.ed25519
+        assert payment.sender.raw == tx_src.ed25519
+        assert payment.dest.raw == dest.ed25519
         assert payment.payment_type == TransactionType.UNKNOWN
         assert payment.quarks == 20
         assert not payment.invoice
@@ -82,16 +82,16 @@ class TestTransaction(object):
         assert len(data.payments) == 2
 
         payment1 = data.payments[0]
-        assert payment1.sender == acc1.ed25519
-        assert payment1.dest == acc2.ed25519
+        assert payment1.sender.raw == acc1.ed25519
+        assert payment1.dest.raw == acc2.ed25519
         assert payment1.payment_type == memo.tx_type()
         assert payment1.quarks == 10
         assert (payment1.invoice.to_proto().SerializeToString() == il.invoices[0].SerializeToString())
         assert not payment1.memo
 
         payment2 = data.payments[1]
-        assert payment2.sender == acc2.ed25519
-        assert payment2.dest == acc1.ed25519
+        assert payment2.sender.raw == acc2.ed25519
+        assert payment2.dest.raw == acc1.ed25519
         assert payment2.payment_type == TransactionType.P2P
         assert payment2.quarks == 15
         assert (payment2.invoice.to_proto().SerializeToString() == il.invoices[1].SerializeToString())

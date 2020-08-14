@@ -1,5 +1,6 @@
 from .earn import Earn
 from .invoice import LineItem, Invoice, InvoiceList
+from .keys import PublicKey, PrivateKey
 from .memo import AgoraMemo
 from .payment import Payment, ReadOnlyPayment
 from .result import EarnResult, BatchEarnResult
@@ -11,6 +12,8 @@ __all__ = [
     'LineItem',
     'Invoice',
     'InvoiceList',
+    'PublicKey',
+    'PrivateKey',
     'AgoraMemo',
     'Payment',
     'ReadOnlyPayment',

@@ -2,11 +2,10 @@ import logging
 import os
 from typing import List
 
-import kin_base
 from flask import Flask, request
 
 from agora.error import InvoiceErrorReason
-from agora.utils import public_key_to_address
+from agora.model import PrivateKey
 from agora.webhook.events import Event
 from agora.webhook.handler import WebhookHandler, AGORA_HMAC_HEADER, APP_USER_ID_HEADER, APP_USER_PASSKEY_HEADER
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
@@ -17,7 +16,7 @@ app = Flask(__name__)
 
 webhook_secret = os.environ.get("WEBHOOK_SECRET")
 webhook_seed = os.environ.get("WEBHOOK_SEED")
-webhook_keypair = kin_base.Keypair.from_seed(webhook_seed)
+webhook_private_key = PrivateKey.from_string(webhook_seed)
 
 webhook_handler = WebhookHandler(webhook_secret.encode('utf-8'))
 
@@ -59,16 +58,16 @@ def _handle_events(received_events: List[Event]):
 def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse):
     for idx, payment in enumerate(req.payments):
         # Double check that the transaction crafter isn't trying to impersonate us
-        if payment.sender == webhook_keypair.raw_public_key():
+        if payment.sender == webhook_private_key.public_key():
             logging.warning("rejecting: payment sender is webhook address")
             resp.reject()
             return
 
         # In this example, we don't want to sign transactions that are not sending Kin to the webhook account. Other
         # application use cases may not have this restrictions
-        if payment.dest != webhook_keypair.raw_public_key():
-            logging.warning("rejecting: bad destination {}, expected {}".format(public_key_to_address(payment.dest),
-                                                                                webhook_keypair.address().decode()))
+        if payment.dest != webhook_private_key.public_key():
+            logging.warning("rejecting: bad destination {}, expected {}".format(
+                payment.dest.address, webhook_private_key.public_key().address))
             resp.mark_invoice_error(idx, InvoiceErrorReason.WRONG_DESTINATION)
 
         # If the transaction crafter submitted an invoice, make sure the line item SKUs are set.
@@ -95,7 +94,7 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
     #
     # Backends may keep track of the transaction themselves using SignTransactionRequest.get_tx_hash() and rely on
     # either the Events webhook or polling to get the transaction status.
-    resp.sign(webhook_keypair.raw_seed())
+    resp.sign(webhook_private_key)
     return
 
 

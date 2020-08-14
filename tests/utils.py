@@ -1,16 +1,17 @@
 from typing import List, Optional
 
-import kin_base
 from kin_base.stellarxdr import StellarXDR_const as xdr_const, \
     StellarXDR_pack as xdr_pack, StellarXDR_type as xdr_type
 
+from agora.model import PrivateKey
+
 
 def gen_account_id() -> xdr_type.AccountID:
-    kp = kin_base.Keypair.random()
+    private_key = PrivateKey.random()
 
     return xdr_type.AccountID(
         type=xdr_const.PUBLIC_KEY_TYPE_ED25519,
-        ed25519=kp.raw_public_key(),
+        ed25519=private_key.public_key.raw,
     )
 
 

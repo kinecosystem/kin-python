@@ -1,10 +1,8 @@
 import argparse
 
-import kin_base
-
 from agora.client import Client, RetryConfig, Environment
 from agora.error import Error, TransactionError
-from agora.model import Invoice, LineItem, Payment, TransactionType
+from agora.model import Invoice, LineItem, Payment, TransactionType, PrivateKey, PublicKey
 
 
 def submit_payment(p: Payment):
@@ -29,21 +27,21 @@ args = vars(ap.parse_args())
 retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
 client = Client(Environment.TEST, 1, retry_config=retry_config)  # 1 is the test app index
 
-source_kp = kin_base.Keypair.from_seed(args['sender'])
-dest_kp = kin_base.Keypair.from_address(args['destination'])
+source = PrivateKey.from_string(args['sender'])
+dest = PublicKey.from_string(args['destination'])
 
 # Send a payment of 1 Kin
-payment = Payment(source_kp.raw_seed(), dest_kp.raw_public_key(), TransactionType.EARN, 100000)
+payment = Payment(source, dest, TransactionType.EARN, 100000)
 submit_payment(payment)
 
 # Send a payment of 1 Kin with a text memo
-payment = Payment(source_kp.raw_seed(), dest_kp.raw_public_key(), TransactionType.EARN, 100000,
+payment = Payment(source, dest, TransactionType.EARN, 100000,
                   memo='1-test')
 submit_payment(payment)
 
 # Send payment of 1 Kin with an invoice
 invoice = Invoice([LineItem("Test Payment", 100000, description="This is a description of the payment",
                             sku=b'some sku')])
-payment = Payment(source_kp.raw_seed(), dest_kp.raw_public_key(), TransactionType.EARN, 100000,
+payment = Payment(source, dest, TransactionType.EARN, 100000,
                   invoice=invoice)
 submit_payment(payment)

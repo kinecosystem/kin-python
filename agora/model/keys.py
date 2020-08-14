@@ -1,0 +1,124 @@
+import os
+
+from kin_base import utils as kin_utils
+from nacl import signing
+
+_ED25519_PUB_KEY_SIZE = 32
+_ED25519_PRIV_KEY_SIZE = 64
+
+
+class PublicKey:
+    """PublicKey is a blockchain-agnostic representation of an ed25519 public key.
+
+    :param public_key: The public key, in raw bytes.
+    """
+
+    def __init__(self, public_key: bytes):
+        self._verify_key = signing.VerifyKey(public_key)
+
+    def __eq__(self, other):
+        if not isinstance(other, PublicKey):
+            return False
+
+        return self._verify_key == other._verify_key
+
+    @classmethod
+    def from_string(cls, address: str) -> 'PublicKey':
+        """Parses the provided Stellar-encoded address and returns a PublicKey.
+
+        :param address: A Stellar-encoded address
+        :return: A PublicKey object.
+        """
+        if len(address) != 56:
+            raise ValueError("address format not supported")
+
+        if address[0] != "G":
+            raise ValueError("provided address is not a public key")
+
+        return cls(kin_utils.is_valid_address(address))
+
+    @property
+    def address(self) -> str:
+        """Returns the Stellar-encoded address, as a string.
+
+        :return: The Stellar-encoded string representation of the public key.
+        """
+        return kin_utils.encode_check('account', bytes(self._verify_key)).decode()
+
+    @property
+    def raw(self) -> bytes:
+        """Returns the raw bytes of the public key.
+
+        :return: bytes
+        """
+        return bytes(self._verify_key)
+
+
+class PrivateKey:
+    """PrivateKey is a blockchain-agnostic representation of an ed25519 private key.
+
+    :param private_key: The private key, in raw bytes.
+    """
+
+    def __init__(self, private_key: bytes):
+        self._signing_key = signing.SigningKey(private_key)
+
+    def __eq__(self, other):
+        if not isinstance(other, PrivateKey):
+            return False
+
+        return self._signing_key == other._signing_key
+
+    @classmethod
+    def random(cls):
+        """Returns a Private Key derived from a randomly generated seed.
+
+        :return: A PrivateKey object.
+        """
+        return cls(os.urandom(32))
+
+    @classmethod
+    def from_string(cls, seed: str) -> 'PrivateKey':
+        """Parses the provided Stellar-encoded seed and returns a Private Key.
+
+        :param seed: A Stellar-encoded seed
+        :return: A PrivateKey object.
+        """
+        if len(seed) != 56:
+            raise ValueError("seed format not supported")
+
+        if seed[0] != "S":
+            raise ValueError("provided seed is not a private key")
+
+        return cls(kin_utils.is_valid_secret_key(seed))
+
+    @property
+    def seed(self) -> str:
+        """Returns the Stellar-encoded seed, as a string.
+
+        :return: The Stellar-encoded string representation of the private key.
+        """
+        return kin_utils.encode_check('seed', bytes(self._signing_key)).decode()
+
+    @property
+    def raw(self) -> bytes:
+        """Returns the raw bytes of the private key.
+
+        :return: bytes
+        """
+        return bytes(self._signing_key)
+
+    @property
+    def public_key(self) -> PublicKey:
+        """Returns a :class:`PublicKey <PublicKey>` object corresponding to this private key.
+
+        :return: a :class:`PublicKey <PublicKey>`
+        """
+        return PublicKey(bytes(self._signing_key.verify_key))
+
+    def verify(self, data: bytes, signature: bytes):
+        """Verify the provided data and signature match this keypair's public key.
+        :param data: The data that was signed.
+        :param signature: The signature.
+        """
+        return self._signing_key.verify_key.verify(data, signature)

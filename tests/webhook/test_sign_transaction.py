@@ -1,11 +1,11 @@
 import base64
 
-import kin_base
 import pytest
 from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te
 
 from agora.error import InvoiceErrorReason
+from agora.model import PrivateKey
 from agora.model.invoice import Invoice
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo
@@ -64,11 +64,11 @@ class TestSignTransactionResponse(object):
     def test_sign(self):
         resp = SignTransactionResponse(_generate_envelope())
 
-        kp = kin_base.Keypair.random()
-        resp.sign(kp.raw_seed())
+        private_key = PrivateKey.random()
+        resp.sign(private_key)
 
         # kp.verify throws an error if the signature doesn't match
-        kp.verify(resp.envelope.hash_meta(), resp.envelope.signatures[-1].signature)
+        private_key.verify(resp.envelope.hash_meta(), resp.envelope.signatures[-1].signature)
 
     def test_reject(self):
         resp = SignTransactionResponse(_generate_envelope())

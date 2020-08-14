@@ -4,16 +4,16 @@ import hmac
 import json
 from typing import List
 
-import kin_base
 from kin_base import transaction_envelope as te
 
 from agora.error import WebhookRequestError, InvoiceErrorReason
+from agora.model import PrivateKey
 from agora.webhook.events import Event
 from agora.webhook.handler import WebhookHandler
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo
 
-_TEST_KP = kin_base.Keypair.random()
+_TEST_PRIVATE_KEY = PrivateKey.random()
 
 
 class TestWebhookHandler(object):
@@ -125,7 +125,7 @@ class TestWebhookHandler(object):
         assert status_code == 200
 
         actual_env = te.TransactionEnvelope.from_xdr(json.loads(resp_body)['envelope_xdr'])
-        _TEST_KP.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
+        _TEST_PRIVATE_KEY.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
 
         # fake signature with no webhook secret should result in a successful response
         handler = WebhookHandler()
@@ -133,7 +133,7 @@ class TestWebhookHandler(object):
         assert status_code == 200
 
         actual_env = te.TransactionEnvelope.from_xdr(json.loads(resp_body)['envelope_xdr'])
-        _TEST_KP.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
+        _TEST_PRIVATE_KEY.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
 
     @staticmethod
     def _event_return_none(events: List[Event]):
@@ -149,7 +149,7 @@ class TestWebhookHandler(object):
 
     @staticmethod
     def _sign_tx_success(req: SignTransactionRequest, resp: SignTransactionResponse):
-        resp.sign(_TEST_KP.raw_seed())
+        resp.sign(_TEST_PRIVATE_KEY)
 
     @staticmethod
     def _sign_tx_return_rejected(req: SignTransactionRequest, resp: SignTransactionResponse):
