@@ -29,6 +29,8 @@ class TestWebhookHandler:
         other_sig = base64.b64encode(hmac.new(secret.encode(), b'', hashlib.sha256).digest())
         assert not handler.is_valid_signature(req_body, other_sig)
 
+        assert not handler.is_valid_signature(req_body, "")
+
     def test_handle_event(self):
         secret = 'secret'
         handler = WebhookHandler(secret=secret)
