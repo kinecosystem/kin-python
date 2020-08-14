@@ -10,7 +10,7 @@ from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
     gen_payment_op_result, gen_result_xdr, gen_hash_memo, gen_text_memo
 
 
-class TestTransaction(object):
+class TestTransaction:
     def test_from_proto_text_memo(self):
         op_result = gen_payment_op_result(xdr_const.PAYMENT_UNDERFUNDED)
         result_xdr = gen_result_xdr(xdr_const.txFAILED, [op_result])

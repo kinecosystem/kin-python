@@ -10,7 +10,7 @@ from agora.model.transaction_type import TransactionType
 from agora.utils import kin_str_to_quarks
 
 
-class Payment(object):
+class Payment:
     """The :class:`Payment <Payment>` object, which represents a payment that will get submitted.
 
     :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account from which funds will be sent.
@@ -57,7 +57,7 @@ class Payment(object):
                 self.memo == other.memo)
 
 
-class ReadOnlyPayment(object):
+class ReadOnlyPayment:
     """The :class:`ReadOnlyPayment <ReadOnlyPayment>` object, which represents a payment that was retrieved from
     history.
 

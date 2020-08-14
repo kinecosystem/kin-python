@@ -10,7 +10,7 @@ from agora.model.transaction_type import TransactionType
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_hash_memo
 
 
-class TestReadOnlyPayment(object):
+class TestReadOnlyPayment:
     def test_payments_from_envelope(self):
         acc1 = gen_account_id()
         acc2 = gen_account_id()

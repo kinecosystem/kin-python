@@ -4,7 +4,7 @@ import time
 from agora.retry.backoff import Backoff
 
 
-class Strategy(object):
+class Strategy:
     """Determines whether or not an action should be retried. Strategies are allowed to delay or cause other side
     effects.
 

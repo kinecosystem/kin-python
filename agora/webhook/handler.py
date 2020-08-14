@@ -14,7 +14,7 @@ APP_USER_ID_HEADER = "X-App-User-ID"
 APP_USER_PASSKEY_HEADER = "X-App-User-Passkey"
 
 
-class WebhookHandler(object):
+class WebhookHandler:
     """The :class:`WebhookHelper <WebhookHelper>` contains hooks and methods that can be used to add support for Agora
     webhooks.
 

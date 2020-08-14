@@ -85,7 +85,7 @@ def nonce_retry_client(grpc_channel):
     return Client(Environment.TEST, app_index=1, grpc_channel=grpc_channel, retry_config=_config_with_nonce_retry)
 
 
-class TestBaseClient(object):
+class TestBaseClient:
     def test_not_implemented(self):
         private_key = PrivateKey.random()
         public_key = PrivateKey.random().public_key
@@ -109,7 +109,7 @@ class TestBaseClient(object):
 
 # Filter warnings caused by instantiating Horizon inside AgoraApi
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
-class TestAgoraClient(object):
+class TestAgoraClient:
     def test_invalid_inits(self, grpc_channel):
         with pytest.raises(ValueError):
             Client(Environment.TEST, grpc_channel=grpc_channel, endpoint='fakeendpoint')

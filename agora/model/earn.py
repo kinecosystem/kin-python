@@ -4,7 +4,7 @@ from agora.model.invoice import Invoice
 from agora.model.keys import PublicKey
 
 
-class Earn(object):
+class Earn:
     """The :class:`Earn <Earn>` object, which represents an earn payment that will get submitted.
 
     :param destination: The :class:`PublicKey <agora.model.keys.PublicKey` of the account the earn will be sent to.

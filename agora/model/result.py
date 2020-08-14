@@ -3,7 +3,7 @@ from typing import List, Optional
 from agora.model.earn import Earn
 
 
-class EarnResult(object):
+class EarnResult:
     """The :class:`EarnResult <EarnResult>` object, which contains the result of a submitted earn.
 
     :param earn: The originally submitted earn.
@@ -28,7 +28,7 @@ class EarnResult(object):
                 self.error == other.error)
 
 
-class BatchEarnResult(object):
+class BatchEarnResult:
     """The :class:`BatchEarnResult <BatchEarnResult>` object, which contains the results of a submitted earn batch.
 
     :param succeeded: A list of :class:`EarnResult <EarnResult>` objects.

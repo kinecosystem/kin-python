@@ -16,7 +16,7 @@ from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen
 _TEST_PRIVATE_KEY = PrivateKey.random()
 
 
-class TestWebhookHandler(object):
+class TestWebhookHandler:
     def test_is_valid_signature(self):
         secret = 'secret'
         handler = WebhookHandler(secret=secret)

@@ -11,7 +11,7 @@ from agora.webhook.sign_transaction import SignTransactionRequest, SignTransacti
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo
 
 
-class TestSignTransactionRequest(object):
+class TestSignTransactionRequest:
     def test_from_json_simple(self):
         envelope = _generate_envelope()
         data = {
@@ -60,7 +60,7 @@ class TestSignTransactionRequest(object):
             SignTransactionRequest.from_json({'kin_version': 3})
 
 
-class TestSignTransactionResponse(object):
+class TestSignTransactionResponse:
     def test_sign(self):
         resp = SignTransactionResponse(_generate_envelope())
 

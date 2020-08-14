@@ -53,7 +53,7 @@ _NON_RETRIABLE_ERRORS = [
 _GRPC_TIMEOUT_SECONDS = 10
 
 
-class RetryConfig(object):
+class RetryConfig:
     """A :class:`RetryConfig <RetryConfig>` for configuring retries for Agora requests.
 
     :param max_retries: (optional) The max number of times the client will retry a request, excluding the initial
@@ -77,7 +77,7 @@ class RetryConfig(object):
                                     else 3)
 
 
-class BaseClient(object):
+class BaseClient:
     """An interface for accessing Agora features.
     """
 

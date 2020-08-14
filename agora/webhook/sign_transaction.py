@@ -11,7 +11,7 @@ from agora.model.keys import PrivateKey
 from agora.model.payment import ReadOnlyPayment
 
 
-class SignTransactionRequest(object):
+class SignTransactionRequest:
     """A sign transaction request received from Agora.
 
     :param payments: A list of :class:`ReadOnlyPayment <agora.model.payment.ReadOnlyPayment>` that an app client is
@@ -57,7 +57,7 @@ class SignTransactionRequest(object):
         return self.envelope.hash_meta()
 
 
-class SignTransactionResponse(object):
+class SignTransactionResponse:
     """A response to a sign transaction request received from Agora. 
     
     :param envelope: (optional) The :class:`TransactionEnvelope <kin_base.transaction_envelope.TransactionEnvelope>`

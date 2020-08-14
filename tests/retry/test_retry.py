@@ -6,7 +6,7 @@ from agora.retry import retry, LimitStrategy, ConstantBackoff
 from agora.retry.strategy import BackoffStrategy
 
 
-class TestRetry(object):
+class TestRetry:
     def test_retry(self):
         strategies = [
             LimitStrategy(2),

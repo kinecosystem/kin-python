@@ -8,7 +8,7 @@ from agora.error import AccountExistsError, BadNonceError, DestinationDoesNotExi
 from tests.utils import gen_create_op_result, gen_payment_op_result, gen_merge_op_result, gen_result_xdr
 
 
-class TestExceptions(object):
+class TestExceptions:
     @pytest.mark.parametrize(
         "proto_invoice_reason, expected",
         [
@@ -28,7 +28,7 @@ class TestExceptions(object):
         assert actual == expected
 
 
-class TestTransactionError(object):
+class TestTransactionError:
     def test_from_result_success(self):
         op_result = gen_create_op_result(xdr_const.CREATE_ACCOUNT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result] if op_result else [])

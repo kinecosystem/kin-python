@@ -3,13 +3,13 @@ import pytest
 from agora.retry import Backoff, ConstantBackoff, LinearBackoff, ExponentialBackoff, BinaryExponentialBackoff
 
 
-class TestBackoff(object):
+class TestBackoff:
     def test_get_backoff(self):
         with pytest.raises(NotImplementedError):
             Backoff().get_backoff(1)
 
 
-class TestConstantBackoff(object):
+class TestConstantBackoff:
     def test_get_backoff(self):
         b = ConstantBackoff(0.1)
 
@@ -17,7 +17,7 @@ class TestConstantBackoff(object):
             assert b.get_backoff(i) == 0.1
 
 
-class TestLinearBackoff(object):
+class TestLinearBackoff:
     def test_get_backoff(self):
         b = LinearBackoff(1)
 
@@ -27,7 +27,7 @@ class TestLinearBackoff(object):
         assert b.get_backoff(4) == 4
 
 
-class TestExponentialBackoff(object):
+class TestExponentialBackoff:
     def test_get_backoff(self):
         b = ExponentialBackoff(2, 3.0)
 
@@ -37,7 +37,7 @@ class TestExponentialBackoff(object):
         assert b.get_backoff(4) == 54  # 2*3^3
 
 
-class TestBinaryExponentialBackoff(object):
+class TestBinaryExponentialBackoff:
     def test_get_backoff(self):
         b = BinaryExponentialBackoff(2)
 

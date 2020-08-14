@@ -6,7 +6,7 @@ from agoraapi.common.v3 import model_pb2
 from agora.model.invoice import InvoiceList
 
 
-class StellarData(object):
+class StellarData:
     """Stellar-specific data related to a transaction.
 
     :param result_xdr: A base64-encoded transaction result XDR.
@@ -25,7 +25,7 @@ class StellarData(object):
         )
 
 
-class TransactionEvent(object):
+class TransactionEvent:
     """An event indicating a transaction has completed (either successfully or
     unsuccessfully).
 
@@ -69,7 +69,7 @@ class TransactionEvent(object):
                    stellar_data=stellar_data)
 
 
-class Event(object):
+class Event:
     """An event container for a specific type of event triggered by a blockchain operation.
 
     :param transaction_event: (optional) A :class:`TransactionEvent <TransactionEvent>`.

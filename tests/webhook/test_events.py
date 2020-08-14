@@ -6,7 +6,7 @@ from agoraapi.common.v3 import model_pb2
 from agora.webhook.events import StellarData, TransactionEvent, Event
 
 
-class TestStellarData(object):
+class TestStellarData:
     def test_from_json(self):
         data = {
             'result_xdr': 'resultxdr',
@@ -18,7 +18,7 @@ class TestStellarData(object):
         assert stellar_data.envelope_xdr == 'envelopexdr'
 
 
-class TestTransactionEvent(object):
+class TestTransactionEvent:
     def test_from_json_simple(self):
         data = {
             'kin_version': 3,
@@ -77,7 +77,7 @@ class TestTransactionEvent(object):
             TransactionEvent.from_json({'kin_version': 3})
 
 
-class TestEvent(object):
+class TestEvent:
     def test_from_json_empty(self):
         event = Event.from_json({})
         assert not event.transaction_event

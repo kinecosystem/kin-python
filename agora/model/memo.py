@@ -8,7 +8,7 @@ MAGIC_BYTE = 0x1
 HIGHEST_VERSION = 1
 
 
-class AgoraMemo(object):
+class AgoraMemo:
     """Implements the Agora memo specification as defined in github.com/kinecosystem/agora-api.
 
     :param val: the raw memo bytearray.

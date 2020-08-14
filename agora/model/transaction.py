@@ -8,7 +8,7 @@ from agora.error import TransactionErrors
 from agora.model.payment import ReadOnlyPayment
 
 
-class TransactionData(object):
+class TransactionData:
     """The :class:`TransactionData <TransactionData>` object, which contains information about the payments in a
     transaction.
 

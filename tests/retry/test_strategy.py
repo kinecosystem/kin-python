@@ -4,34 +4,34 @@ from agora.retry import Strategy, LimitStrategy, RetriableErrorsStrategy, NonRet
 from agora.retry.strategy import BackoffStrategy, BackoffWithJitterStrategy
 
 
-class TestStrategy(object):
+class TestStrategy:
     def test_should_retry(self):
         with pytest.raises(NotImplementedError):
             Strategy().should_retry(1, ValueError())
 
 
-class TestLimitStrategy(object):
+class TestLimitStrategy:
     def test_should_retry(self):
         s = LimitStrategy(2)
         assert s.should_retry(1, ValueError())
         assert not s.should_retry(2, ValueError())
 
 
-class TestRetriableErrorsStrategy(object):
+class TestRetriableErrorsStrategy:
     def test_should_retry(self):
         s = RetriableErrorsStrategy([ConnectionError])
         assert s.should_retry(1, ConnectionError())
         assert not s.should_retry(1, ValueError())
 
 
-class TestNonRetriableErrorsStrategy(object):
+class TestNonRetriableErrorsStrategy:
     def test_should_retry(self):
         s = NonRetriableErrorsStrategy([ValueError])
         assert s.should_retry(1, ConnectionError())
         assert not s.should_retry(1, ValueError())
 
 
-class TestBackoffStrategy(object):
+class TestBackoffStrategy:
     def test_should_retry(self, mocker):
         mock_time = mocker.patch('time.time')
 
@@ -43,7 +43,7 @@ class TestBackoffStrategy(object):
             assert args[0] == 0.1
 
 
-class TestBackoffWithJitterStrategy(object):
+class TestBackoffWithJitterStrategy:
     def test_should_retry(self, mocker):
         mock_time = mocker.patch('time.time')
 

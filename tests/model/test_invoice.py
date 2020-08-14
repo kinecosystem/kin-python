@@ -3,7 +3,7 @@ from agoraapi.common.v3 import model_pb2
 from agora.model.invoice import Invoice, InvoiceList, LineItem
 
 
-class TestLineItem(object):
+class TestLineItem:
     def test_from_proto(self):
         proto = model_pb2.Invoice.LineItem(
             title='title1',
@@ -28,7 +28,7 @@ class TestLineItem(object):
         assert proto.sku == item.sku
 
 
-class TestInvoice(object):
+class TestInvoice:
     def test_from_proto(self):
         proto = model_pb2.Invoice(items=[
             model_pb2.Invoice.LineItem(title='t1', amount=100),
@@ -57,7 +57,7 @@ class TestInvoice(object):
             assert proto_item.amount == item.amount
 
 
-class TestInvoiceList(object):
+class TestInvoiceList:
     def test_from_proto(self):
         proto = model_pb2.InvoiceList(invoices=[
             model_pb2.Invoice(

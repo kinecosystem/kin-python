@@ -8,7 +8,7 @@ from agora.model.memo import AgoraMemo, MAGIC_BYTE
 from agora.model.transaction_type import TransactionType
 
 
-class TestMemo(object):
+class TestMemo:
     def test_new_valid(self):
         empty_fk = bytes(29)
 

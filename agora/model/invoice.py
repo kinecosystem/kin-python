@@ -4,7 +4,7 @@ from typing import List, Optional
 from agoraapi.common.v3 import model_pb2
 
 
-class LineItem(object):
+class LineItem:
     """The :class:`LineItem` object, which represents a line item in an invoice.
 
     :param title: The title of the line item.
@@ -43,7 +43,7 @@ class LineItem(object):
         )
 
 
-class Invoice(object):
+class Invoice:
     """The :class: `Invoice <Invoice>` object, which represents a transaction invoice for a single payment.
 
     :param items: A list of :class:`LineItem <LineItem>` objects.
@@ -66,7 +66,7 @@ class Invoice(object):
         return model_pb2.Invoice(items=[item.to_proto() for item in self.items])
 
 
-class InvoiceList(object):
+class InvoiceList:
     """The :class:`InvoiceList <InvoiceList>` object, which is a list of
     invoices associated with a transaction.
 

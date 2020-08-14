@@ -1,4 +1,4 @@
-class Backoff(object):
+class Backoff:
     """Provides the amount of time to wait before trying again.
     """
 

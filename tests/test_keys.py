@@ -4,7 +4,7 @@ from kin_base import Keypair
 from agora.model.keys import PublicKey, PrivateKey
 
 
-class TestKeys(object):
+class TestKeys:
     def test_kin_keypair_compat(self):
         kp = Keypair.random()
 

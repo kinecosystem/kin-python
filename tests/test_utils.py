@@ -1,7 +1,7 @@
 from agora.utils import partition, kin_str_to_quarks, quarks_to_kin_str
 
 
-class TestUtils(object):
+class TestUtils:
     def test_partiion(self):
         numbers = list(range(250))
         expected_batches = [numbers[0:100], numbers[100:200], numbers[200:]]
