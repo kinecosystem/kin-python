@@ -24,12 +24,14 @@ At a minimum, the client needs to be instantiated with an `Environment`.
 
 ```python
 from agora.client import Client, Environment 
+
 client = Client(Environment.TEST)
 ```
 
 Apps with [registered](https://docs.kin.org/app-registration) app indexes should initialize the client with their index:
 ```python
 from agora.client import Client, Environment
+
 client = Client(Environment.TEST, app_index=1)
 ```
 
@@ -42,8 +44,16 @@ Additional options include:
 ### Usage
 #### Create an Account
 The `create_account` method creates an account with the provided private key.
+
+To create a new account, first generate a new private key:
 ```python
-private_key = b'yourkey'
+from agora.model import PrivateKey
+
+private_key = PrivateKey.random()
+```
+
+Next, submit it using `create_account`:
+```python
 client.create_account(private_key)
 ```
 
@@ -57,7 +67,11 @@ transaction_data = client.get_transaction(tx_hash)
 #### Get an Account Balance
 The `get_balance` method gets the balance of the provided account, in quarks.
 ```python
-public_key = b'yourkey'
+from agora.model import PrivateKey
+from agora.client import Client, Environment
+
+client = Client(Environment.TEST, app_index=1)
+public_key = private_key = PrivateKey.random().public_key
 balance = client.get_balance(public_key)
 ``` 
 
@@ -65,10 +79,12 @@ balance = client.get_balance(public_key)
 The `submit_payment` method submits the provided payment to Agora.
 ```python
 from agora.client import Client, Environment
-from agora.model import Payment, TransactionType
+from agora.model import Payment, TransactionType, PrivateKey, PublicKey
 
 client = Client(Environment.TEST, app_index=1)
-payment = Payment(b'sender_private_key', b'dest_public_key', TransactionType.EARN, 100000)
+sender = PrivateKey.from_string('SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
+dest = PublicKey.from_string('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
+payment = Payment(sender, dest, TransactionType.EARN, 100000)
 
 tx_hash = client.submit_payment(payment)
 ```
@@ -89,18 +105,21 @@ The `submit_earn_batch` method submits a batch of earns to Agora from a single a
 transactions where possible and submits as many transactions as necessary to submit all the earns.
 ```python
 from agora.client import Client, Environment
-from agora.model import Earn
+from agora.model import Earn, PrivateKey, PublicKey
 
 client = Client(Environment.TEST, app_index=1)
+sender = PrivateKey.from_string('SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
+dest1 = PublicKey.from_string('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1')
+dest2 = PublicKey.from_string('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX2')
 
 # Send one earn of 1 Kin and one earn of 2 Kin
 earns = [
-    Earn(b'dest_public_key1', 100000),
-    Earn(b'dest_public_key2', 200000),
+    Earn(dest1, 100000),
+    Earn(dest2, 200000),
     ...
 ]
 
-batch_earn_result = client.submit_earn_batch(b'sender_private_key`, earns)
+batch_earn_result = client.submit_earn_batch(sender, earns)
 ```
 
 A single `Earn` has the following properties:
@@ -127,7 +146,7 @@ The `WebhookHandler` must be instantiated with the app's configured [webhook sec
 ```python
 from agora.webhook.handler import WebhookHandler
 
-webhook_handler = WebhookHandler(b'mysecret')
+webhook_handler = WebhookHandler('mysecret')
 ```  
 
 ### Usage
@@ -155,7 +174,7 @@ from typing import List
 from agora.webhook import WebhookHandler, AGORA_HMAC_HEADER
 from agora.webhook.events import Event
 
-webhook_handler = WebhookHandler(b'mysecret')
+webhook_handler = WebhookHandler('mysecret')
 
 
 def process_events(events: List[Event]) -> None:
@@ -194,7 +213,7 @@ This function can be used with `WebhookHandler.sign_transaction` inside your sig
 from agora.webhook import WebhookHandler, AGORA_HMAC_HEADER
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 
-webhook_handler = WebhookHandler(b'mysecret')
+webhook_handler = WebhookHandler('mysecret')
 
 def verify_request(req: SignTransactionRequest, resp: SignTransactionResponse) -> None:
     # verify the transaction inside `req`, and modify `resp` as needed.
