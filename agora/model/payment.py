@@ -7,7 +7,7 @@ from agora.model.invoice import Invoice
 from agora.model.keys import PrivateKey, PublicKey
 from agora.model.memo import AgoraMemo
 from agora.model.transaction_type import TransactionType
-from agora.utils import kin_str_to_quarks
+from agora.utils import kin_to_quarks
 
 
 class Payment:
@@ -133,7 +133,7 @@ class ReadOnlyPayment:
                 dest=PublicKey.from_string(op.destination),
                 payment_type=agora_memo.tx_type() if agora_memo else
                 TransactionType.UNKNOWN,
-                quarks=kin_str_to_quarks(op.amount),
+                quarks=kin_to_quarks(op.amount),
                 invoice=Invoice.from_proto(inv) if inv else None,
                 memo=text_memo.text.decode() if text_memo else None,
             ))

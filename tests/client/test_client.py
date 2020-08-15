@@ -22,7 +22,7 @@ from agora.model.keys import PrivateKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
-from agora.utils import partition, kin_str_to_quarks, quarks_to_kin_str
+from agora.utils import partition, kin_to_quarks, quarks_to_kin
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
     gen_payment_op_result, gen_result_xdr, gen_hash_memo
 
@@ -941,7 +941,7 @@ class TestAgoraClient:
 
     @staticmethod
     def _set_successful_get_account_info_response(
-        channel: grpc_testing.Channel, pk: PrivateKey, sequence: int, balance: int = kin_str_to_quarks("1000")
+        channel: grpc_testing.Channel, pk: PrivateKey, sequence: int, balance: int = kin_to_quarks("1000")
     ) -> account_pb.GetAccountInfoRequest:
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.OK,
@@ -991,7 +991,7 @@ class TestAgoraClient:
             assert isinstance(op, operation.Payment)
             assert op.source == payment.sender.public_key.stellar_address
             assert op.destination == payment.destination.stellar_address
-            assert op.amount == quarks_to_kin_str(payment.quarks)
+            assert op.amount == quarks_to_kin(payment.quarks)
 
     @staticmethod
     def _assert_earn_batch_envelope(
@@ -1010,7 +1010,7 @@ class TestAgoraClient:
             assert isinstance(op, operation.Payment)
             assert op.source == sender.public_key.stellar_address
             assert op.destination == earn.destination.stellar_address
-            assert op.amount == quarks_to_kin_str(earn.quarks)
+            assert op.amount == quarks_to_kin(earn.quarks)
 
     @staticmethod
     def _assert_envelope_properties(

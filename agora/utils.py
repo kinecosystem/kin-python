@@ -17,7 +17,7 @@ def partition(l, size):
     return [l[i:i + size] for i in range(0, len(l), size)]
 
 
-def kin_str_to_quarks(kin: str) -> int:
+def kin_to_quarks(kin: str) -> int:
     """Converts a string kin amount to quarks. If the provided Kin amount contains more than 5 decimal places (i.e.
     it contains an inexact number of quarks), additional decimal places will be ignored.
 
@@ -30,7 +30,7 @@ def kin_str_to_quarks(kin: str) -> int:
     return int((rounded * _KIN_TO_QUARKS).to_integral_value())
 
 
-def quarks_to_kin_str(quarks: int) -> str:
+def quarks_to_kin(quarks: int) -> str:
     """Converts an integer quark amount into a string Kin amount.
 
     :param quarks: An amount, in quarks.

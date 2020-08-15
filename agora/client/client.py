@@ -24,7 +24,7 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy, Strategy
-from agora.utils import partition, quarks_to_kin_str
+from agora.utils import partition, quarks_to_kin
 
 _SUPPORTED_VERSIONS = [3]
 
@@ -266,7 +266,7 @@ class Client(BaseClient):
 
         builder.append_payment_op(
             payment.destination.stellar_address,
-            quarks_to_kin_str(payment.quarks),
+            quarks_to_kin(payment.quarks),
             source=payment.sender.public_key.stellar_address,
         )
 
@@ -380,7 +380,7 @@ class Client(BaseClient):
         for earn in earns:
             builder.append_payment_op(
                 earn.destination.stellar_address,
-                quarks_to_kin_str(earn.quarks),
+                quarks_to_kin(earn.quarks),
                 source=sender.public_key.stellar_address,
             )
 
