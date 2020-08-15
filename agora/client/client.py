@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from typing import List, Optional, Callable
+from typing import List, Optional
 
 import grpc
 import kin_base
@@ -23,7 +23,7 @@ from agora.model.result import BatchEarnResult, EarnResult
 from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
-    NonRetriableErrorsStrategy, RetriableErrorsStrategy, Strategy
+    NonRetriableErrorsStrategy, RetriableErrorsStrategy
 from agora.utils import partition, quarks_to_kin
 
 _SUPPORTED_VERSIONS = [3]
@@ -416,7 +416,7 @@ class Client(BaseClient):
 
             return result
 
-        return self._retry(self.nonce_retry_strategies, _sign_and_submit)
+        return retry(self.nonce_retry_strategies, _sign_and_submit)
 
     def _create_stellar_account(self, private_key: PrivateKey):
         """Submits a request to Agora to create a Stellar account.
@@ -491,52 +491,4 @@ class Client(BaseClient):
 
             return result
 
-        return self._retry(self.retry_strategies, _submit)
-
-    @staticmethod
-    def _retry(retry_strategies: List[Strategy], f: Callable, *args, **kwargs):
-        """A modified version of :meth:`agora.retry.retry` that uses :meth:`Client._should_retry` to evaluate whether
-        the function should be retried.
-
-        :param retry_strategies: The list of :class:`<agora.retry.strategy.Strategy>` objects to use
-        :param f: A Callable to execute with the provided args and kwargs.
-        :return: The return value of `f`.
-        """
-        i = 1
-        while True:
-            try:
-                return f(*args, **kwargs)
-            except Exception as e:
-                if not Client._should_retry(retry_strategies, i, e):
-                    raise e
-
-            i += 1
-
-    @staticmethod
-    def _should_retry(retry_strategies: List[Strategy], attempt: int, e: Exception) -> bool:
-        """Evaluates whether an action should be retried or not, provided the list of strategies, current attempt
-        number, and thrown exception.
-
-        If the provided error is a StellarTransactionError, this method will evaluate the transaction and operation
-        errors inside the error against the provided retry strategies instead of error itself.
-
-        :param retry_strategies: The list of :class:`<agora.retry.strategy.Strategy>` objects to use
-        :param attempt: The current attempt number.
-        :param e: The thrown Exception.
-        :return: A bool indicating whether or not the action should be retried.
-        """
-        if not retry_strategies:
-            return False
-
-        if isinstance(e, TransactionErrors):
-            for s in retry_strategies:
-                if not s.should_retry(attempt, e.tx_error):
-                    return False
-                if any(not s.should_retry(attempt, op_error) for op_error in e.op_errors):
-                    return False
-        else:
-            for s in retry_strategies:
-                if not s.should_retry(attempt, e):
-                    return False
-
-        return True
+        return retry(self.retry_strategies, _submit)
