@@ -67,7 +67,7 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
         # application use cases may not have this restrictions
         if payment.dest != webhook_private_key.public_key():
             logging.warning("rejecting: bad destination {}, expected {}".format(
-                payment.dest.address, webhook_private_key.public_key().address))
+                payment.dest.stellar_address, webhook_private_key.public_key().stellar_address))
             resp.mark_invoice_error(idx, InvoiceErrorReason.WRONG_DESTINATION)
 
         # If the transaction crafter submitted an invoice, make sure the line item SKUs are set.

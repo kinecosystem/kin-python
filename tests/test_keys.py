@@ -9,20 +9,20 @@ class TestKeys:
         kp = Keypair.random()
 
         pub = PublicKey(kp.raw_public_key())
-        assert pub.address == kp.address().decode()
+        assert pub.stellar_address == kp.address().decode()
         assert pub.raw == kp.raw_public_key()
 
         priv = PrivateKey(kp.raw_seed())
-        assert priv.seed == kp.seed().decode()
+        assert priv.stellar_seed == kp.seed().decode()
         assert priv.raw == kp.raw_seed()
 
     def test_random(self):
         priv = PrivateKey.random()
-        kp = Keypair.from_seed(priv.seed)
+        kp = Keypair.from_seed(priv.stellar_seed)
 
-        assert priv.public_key.address == kp.address().decode()
+        assert priv.public_key.stellar_address == kp.address().decode()
         assert priv.public_key.raw == kp.raw_public_key()
-        assert priv.seed == kp.seed().decode()
+        assert priv.stellar_seed == kp.seed().decode()
         assert priv.raw == kp.raw_seed()
 
     def test_from_string(self):
@@ -30,10 +30,10 @@ class TestKeys:
         seed = "SCZ4KGTCMAFIJQCCJDMMKDFUB7NYV56VBNEU7BKMR4PQFUETJCWLV6GN"
 
         pub = PublicKey.from_string(address)
-        assert pub.address == address
+        assert pub.stellar_address == address
 
         priv = PrivateKey.from_string(seed)
-        assert priv.seed == seed
+        assert priv.stellar_seed == seed
 
         # Test invalid cases
         with pytest.raises(ValueError):

@@ -265,9 +265,9 @@ class Client(BaseClient):
             builder.add_hash_memo(memo.val)
 
         builder.append_payment_op(
-            payment.destination.address,
+            payment.destination.stellar_address,
             quarks_to_kin_str(payment.quarks),
-            source=payment.sender.public_key.address,
+            source=payment.sender.public_key.stellar_address,
         )
 
         if payment.source:
@@ -379,9 +379,9 @@ class Client(BaseClient):
 
         for earn in earns:
             builder.append_payment_op(
-                earn.destination.address,
+                earn.destination.stellar_address,
                 quarks_to_kin_str(earn.quarks),
-                source=sender.public_key.address,
+                source=sender.public_key.stellar_address,
             )
 
         if source:
@@ -408,7 +408,7 @@ class Client(BaseClient):
             builder.sequence = source_info.sequence_number + 1
 
             for signer in signers:
-                builder.sign(signer.seed)
+                builder.sign(signer.stellar_seed)
 
             result = self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
             if result.tx_error and isinstance(result.tx_error.tx_error, BadNonceError):
@@ -425,7 +425,7 @@ class Client(BaseClient):
         """
         resp = self.account_stub.CreateAccount(account_pb.CreateAccountRequest(
             account_id=model_pb2.StellarAccountId(
-                value=private_key.public_key.address
+                value=private_key.public_key.stellar_address
             )
         ), timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
@@ -439,7 +439,7 @@ class Client(BaseClient):
         """
         resp = self.account_stub.GetAccountInfo(account_pb.GetAccountInfoRequest(
             account_id=model_pb2.StellarAccountId(
-                value=public_key.address
+                value=public_key.stellar_address
             )
         ), timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
@@ -455,7 +455,7 @@ class Client(BaseClient):
         """
         return kin_base.Builder(self._horizon, self.network_name,
                                 100,
-                                source.seed)
+                                source.stellar_seed)
 
     def _submit_stellar_transaction(
         self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None

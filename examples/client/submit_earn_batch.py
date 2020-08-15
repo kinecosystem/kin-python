@@ -21,12 +21,12 @@ batch_result = client.submit_earn_batch(source, earns)
 print("{} succeeded, {} failed".format(len(batch_result.succeeded), len(batch_result.failed)))
 for result in batch_result.succeeded:
     print("Sent 1 kin to {} in transaction {}".format(
-        result.earn.destination.address,
+        result.earn.destination.stellar_address,
         result.tx_hash.hex(),
     ))
 for result in batch_result.failed:
     print("Failed to send 1 kin to {} in transaction {} (error: {})".format(
-        result.earn.destination.address,
+        result.earn.destination.stellar_address,
         result.tx_hash.hex(),
         repr(result.error),
     ))
@@ -38,12 +38,12 @@ batch_result = client.submit_earn_batch(source, earns)
 print("{} succeeded, {} failed".format(len(batch_result.succeeded), len(batch_result.failed)))
 for result in batch_result.succeeded:
     print("Sent 1 kin to {} in transaction {}".format(
-        result.earn.destination.address,
+        result.earn.destination.stellar_address,
         result.tx_hash.hex()),
     )
 for result in batch_result.failed:
     print("Failed to send 1 kin to {} in transaction {} (error: {})".format(
-        result.earn.destination.address,
+        result.earn.destination.stellar_address,
         result.tx_hash.hex(),
         repr(result.error),
     ))

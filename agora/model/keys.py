@@ -38,7 +38,7 @@ class PublicKey:
         return cls(kin_utils.is_valid_address(address))
 
     @property
-    def address(self) -> str:
+    def stellar_address(self) -> str:
         """Returns the Stellar-encoded address, as a string.
 
         :return: The Stellar-encoded string representation of the public key.
@@ -93,7 +93,7 @@ class PrivateKey:
         return cls(kin_utils.is_valid_secret_key(seed))
 
     @property
-    def seed(self) -> str:
+    def stellar_seed(self) -> str:
         """Returns the Stellar-encoded seed, as a string.
 
         :return: The Stellar-encoded string representation of the private key.

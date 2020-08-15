@@ -143,7 +143,7 @@ class TestAgoraClient:
 
         rpc.terminate(account_pb.CreateAccountResponse(), (), grpc.StatusCode.OK, '')
 
-        assert request.account_id.value == private_key.public_key.address
+        assert request.account_id.value == private_key.public_key.stellar_address
         assert not future.result()
 
     def test_create_account_exists(self, grpc_channel, executor, app_index_client):
@@ -159,7 +159,7 @@ class TestAgoraClient:
         with pytest.raises(AccountExistsError):
             application_future.result()
 
-        assert request.account_id.value == private_key.public_key.address
+        assert request.account_id.value == private_key.public_key.stellar_address
 
     def test_get_transaction(self, grpc_channel, executor, app_index_client):
         tx_hash = b'somehash'
@@ -242,7 +242,7 @@ class TestAgoraClient:
             result=account_pb.GetAccountInfoResponse.Result.OK,
             account_info=account_pb.AccountInfo(
                 account_id=model_pb2.StellarAccountId(
-                    value=private_key.public_key.address
+                    value=private_key.public_key.stellar_address
                 ),
                 sequence_number=10,
                 balance=100000,
@@ -252,7 +252,7 @@ class TestAgoraClient:
 
         assert future.result() == 100000
 
-        assert req.account_id.value == private_key.public_key.address
+        assert req.account_id.value == private_key.public_key.stellar_address
 
     def test_get_balance_not_found(self, grpc_channel, executor, app_index_client):
         private_key = PrivateKey.random()
@@ -266,7 +266,7 @@ class TestAgoraClient:
         with pytest.raises(AccountNotFoundError):
             future.result()
 
-        assert req.account_id.value == private_key.public_key.address
+        assert req.account_id.value == private_key.public_key.stellar_address
 
     def test_submit_payment_simple(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
@@ -282,7 +282,7 @@ class TestAgoraClient:
 
         assert future.result() == b'somehash'
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
@@ -304,7 +304,7 @@ class TestAgoraClient:
 
         assert future.result() == b'somehash'
 
-        assert account_req.account_id.value == source.public_key.address
+        assert account_req.account_id.value == source.public_key.stellar_address
 
         expected_signers = [source, sender]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
@@ -326,7 +326,7 @@ class TestAgoraClient:
 
         assert future.result() == b'somehash'
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender, whitelisting_client.whitelist_key], sender, 100,
@@ -348,7 +348,7 @@ class TestAgoraClient:
 
         assert future.result() == b'somehash'
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(
             AgoraMemo.new(1, TransactionType.EARN, 1, InvoiceList([invoice]).get_sha_224_hash()).val)
@@ -380,7 +380,7 @@ class TestAgoraClient:
 
         assert future.result() == b'somehash'
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.TextMemo('somememo')
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
@@ -404,7 +404,7 @@ class TestAgoraClient:
         with pytest.raises(TransactionRejectedError):
             future.result()
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
@@ -435,7 +435,7 @@ class TestAgoraClient:
         with pytest.raises(AlreadyPaidError):
             future.result()
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(
             AgoraMemo.new(1, TransactionType.EARN, 1, InvoiceList([invoice]).get_sha_224_hash()).val)
@@ -464,7 +464,7 @@ class TestAgoraClient:
         with pytest.raises(InsufficientBalanceError):
             future.result()
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
@@ -493,7 +493,7 @@ class TestAgoraClient:
         with pytest.raises(Error):
             future.result()
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
@@ -527,7 +527,7 @@ class TestAgoraClient:
             future.result()
 
         for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.address
+            assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
@@ -562,7 +562,7 @@ class TestAgoraClient:
             assert not earn_result.error
 
         for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.address
+            assert account_req.account_id.value == sender.public_key.stellar_address
 
         earn_batches = partition(all_earns, 100)
         for idx, submit_req in enumerate(submit_reqs):
@@ -592,7 +592,7 @@ class TestAgoraClient:
         assert earn_result.tx_hash == b'somehash'
         assert not earn_result.error
 
-        assert account_req.account_id.value == source.public_key.address
+        assert account_req.account_id.value == source.public_key.stellar_address
 
         expected_signers = [source, sender]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
@@ -620,7 +620,7 @@ class TestAgoraClient:
         assert earn_result.tx_hash == b'somehash'
         assert not earn_result.error
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_signers = [sender, whitelisting_client.whitelist_key]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
@@ -647,7 +647,7 @@ class TestAgoraClient:
         assert earn_result.tx_hash == b'somehash'
         assert not earn_result.error
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.TextMemo('somememo')
         self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo,
@@ -679,7 +679,7 @@ class TestAgoraClient:
             assert earn_result.earn == earns[idx]
             assert not earn_result.error
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         il = InvoiceList([earn.invoice for earn in earns])
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, il.get_sha_224_hash()).val)
@@ -753,7 +753,7 @@ class TestAgoraClient:
             assert not earn_result.tx_hash
             assert isinstance(earn_result.error, TransactionRejectedError)
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, sender,
@@ -799,7 +799,7 @@ class TestAgoraClient:
             assert not earn_result.tx_hash
             assert isinstance(earn_result.error, Error)
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(
             AgoraMemo.new(1, TransactionType.EARN, 1,
@@ -843,7 +843,7 @@ class TestAgoraClient:
             assert earn_result.tx_hash  # make sure it's set
             assert isinstance(earn_result.error, expected_errors[idx])
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, sender,
@@ -878,7 +878,7 @@ class TestAgoraClient:
         assert earn_result.earn == earns[0]
         assert isinstance(earn_result.error, Error)
 
-        assert account_req.account_id.value == sender.public_key.address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
@@ -919,7 +919,7 @@ class TestAgoraClient:
         assert isinstance(earn_result.error, BadNonceError)
 
         for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.address
+            assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         for submit_req in submit_reqs:
@@ -947,7 +947,7 @@ class TestAgoraClient:
             result=account_pb.GetAccountInfoResponse.Result.OK,
             account_info=account_pb.AccountInfo(
                 account_id=model_pb2.StellarAccountId(
-                    value=pk.public_key.address
+                    value=pk.public_key.stellar_address
                 ),
                 sequence_number=sequence,
                 balance=balance,
@@ -989,8 +989,8 @@ class TestAgoraClient:
 
         for idx, op in enumerate(operations):
             assert isinstance(op, operation.Payment)
-            assert op.source == payment.sender.public_key.address
-            assert op.destination == payment.destination.address
+            assert op.source == payment.sender.public_key.stellar_address
+            assert op.destination == payment.destination.stellar_address
             assert op.amount == quarks_to_kin_str(payment.quarks)
 
     @staticmethod
@@ -1008,8 +1008,8 @@ class TestAgoraClient:
         for idx, op in enumerate(operations):
             earn = earns[idx]
             assert isinstance(op, operation.Payment)
-            assert op.source == sender.public_key.address
-            assert op.destination == earn.destination.address
+            assert op.source == sender.public_key.stellar_address
+            assert op.destination == earn.destination.stellar_address
             assert op.amount == quarks_to_kin_str(earn.quarks)
 
     @staticmethod
@@ -1022,7 +1022,7 @@ class TestAgoraClient:
             signer.verify(envelope.hash_meta(), envelope.signatures[idx].signature)
 
         tx = envelope.tx
-        assert tx.source.decode() == tx_source.public_key.address
+        assert tx.source.decode() == tx_source.public_key.stellar_address
         assert tx.fee == fee
         assert tx.sequence == sequence
         assert tx.memo == tx_memo
