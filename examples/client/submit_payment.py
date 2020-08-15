@@ -3,6 +3,7 @@ import argparse
 from agora.client import Client, RetryConfig, Environment
 from agora.error import Error, TransactionErrors
 from agora.model import Invoice, LineItem, Payment, TransactionType, PrivateKey, PublicKey
+from agora.utils import kin_to_quarks
 
 
 def submit_payment(p: Payment):
@@ -31,17 +32,17 @@ source = PrivateKey.from_string(args['sender'])
 dest = PublicKey.from_string(args['destination'])
 
 # Send a payment of 1 Kin
-payment = Payment(source, dest, TransactionType.EARN, 100000)
+payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks("1"))
 submit_payment(payment)
 
 # Send a payment of 1 Kin with a text memo
-payment = Payment(source, dest, TransactionType.EARN, 100000,
+payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks("1"),
                   memo='1-test')
 submit_payment(payment)
 
 # Send payment of 1 Kin with an invoice
 invoice = Invoice([LineItem("Test Payment", 100000, description="This is a description of the payment",
                             sku=b'some sku')])
-payment = Payment(source, dest, TransactionType.EARN, 100000,
+payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks("1"),
                   invoice=invoice)
 submit_payment(payment)

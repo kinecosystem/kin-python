@@ -80,11 +80,12 @@ The `submit_payment` method submits the provided payment to Agora.
 ```python
 from agora.client import Client, Environment
 from agora.model import Payment, TransactionType, PrivateKey, PublicKey
+from agora.utils import kin_to_quarks
 
 client = Client(Environment.TEST, app_index=1)
 sender = PrivateKey.from_string('SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
 dest = PublicKey.from_string('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
-payment = Payment(sender, dest, TransactionType.EARN, 100000)
+payment = Payment(sender, dest, TransactionType.EARN, kin_to_quarks("1"))
 
 tx_hash = client.submit_payment(payment)
 ```
@@ -106,16 +107,17 @@ transactions where possible and submits as many transactions as necessary to sub
 ```python
 from agora.client import Client, Environment
 from agora.model import Earn, PrivateKey, PublicKey
+from agora.utils import kin_to_quarks
 
 client = Client(Environment.TEST, app_index=1)
 sender = PrivateKey.from_string('SXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')
 dest1 = PublicKey.from_string('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1')
 dest2 = PublicKey.from_string('GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX2')
 
-# Send one earn of 1 Kin and one earn of 2 Kin
+# Send two earns of 1 Kin each
 earns = [
-    Earn(dest1, 100000),
-    Earn(dest2, 200000),
+    Earn(dest1, kin_to_quarks("1")),
+    Earn(dest2, 100000),  # also equivalent to 1 Kin
     ...
 ]
 

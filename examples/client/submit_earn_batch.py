@@ -2,6 +2,7 @@ import argparse
 
 from agora.client import Client, RetryConfig, Environment
 from agora.model import Earn, Invoice, LineItem, PrivateKey, PublicKey
+from agora.utils import kin_to_quarks
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-s", "--sender", required=True, help="The private seed of the sender account")
@@ -16,7 +17,7 @@ source = PrivateKey.from_string(args['sender'])
 destinations = [PublicKey.from_string(addr) for addr in args['destinations'].split(',')]
 
 # Send an earn batch with 1 Kin each
-earns = [Earn(dest, 100000) for idx, dest in enumerate(destinations)]
+earns = [Earn(dest, kin_to_quarks("1")) for idx, dest in enumerate(destinations)]
 batch_result = client.submit_earn_batch(source, earns)
 print("{} succeeded, {} failed".format(len(batch_result.succeeded), len(batch_result.failed)))
 for result in batch_result.succeeded:
@@ -32,7 +33,7 @@ for result in batch_result.failed:
     ))
 
 # Send an earn batch of earns with 1 Kin each, with invoices
-earns = [Earn(dest, 100000, invoice=Invoice([LineItem("Payment {}".format(idx), 100000)]))
+earns = [Earn(dest, kin_to_quarks("1"), invoice=Invoice([LineItem("Payment {}".format(idx), kin_to_quarks("1"))]))
          for idx, dest in enumerate(destinations)]
 batch_result = client.submit_earn_batch(source, earns)
 print("{} succeeded, {} failed".format(len(batch_result.succeeded), len(batch_result.failed)))
