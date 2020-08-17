@@ -556,11 +556,6 @@ class TestAgoraClient:
         assert len(batch_earn_result.succeeded) == 250
         assert len(batch_earn_result.failed) == 0
 
-        for idx, earn_result in enumerate(batch_earn_result.failed):
-            assert earn_result.earn == all_earns[idx]
-            assert earn_result.tx_hash == tx_hashes[idx // 100]
-            assert not earn_result.error
-
         for account_req in account_reqs:
             assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -570,6 +565,30 @@ class TestAgoraClient:
             self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, starting_seq + idx + 1,
                                              expected_memo, sender, earn_batches[idx])
             assert len(submit_req.invoice_list.invoices) == 0
+
+    def test_submit_earn_batch_same_dest(self, grpc_channel, executor, app_index_client):
+        sender = PrivateKey.random()
+        dest = PrivateKey.random().public_key
+        all_earns = [Earn(dest, i) for i in range(5)]
+
+        future = executor.submit(app_index_client.submit_earn_batch, sender, all_earns)
+
+        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
+
+        account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
+        tx_hash = 'somehash'.encode()
+        submit_req = self._set_successful_submit_transaction_response(grpc_channel, tx_hash, result_xdr)
+
+        batch_earn_result = future.result()
+        assert len(batch_earn_result.succeeded) == 5
+        assert len(batch_earn_result.failed) == 0
+
+        assert account_req.account_id.value == sender.public_key.stellar_address
+
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11,
+                                         expected_memo, sender, all_earns)
+        assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_earn_batch_with_source(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
