@@ -87,7 +87,7 @@ class BackoffStrategy(Strategy):
 class BackoffWithJitterStrategy(Strategy):
     """A strategy that will delay the next retry, with jitter induced on the delay provided by `backoff`.
 
-    The jigger parameter is a percentage of the total delay (after capping) that the timing can be off by. For example,
+    The jitter parameter is a percentage of the total delay (after capping) that the timing can be off by. For example,
     a capped delay of 0.1s with a jitter of 0.1 will result in a delay of 0.1s +/- 0.01s.
 
     :param: backoff: The :class:`Backoff <agora.retry.backoff.Backoff> to use to determine the amount of time to delay.
