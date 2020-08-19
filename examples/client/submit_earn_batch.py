@@ -48,3 +48,5 @@ for result in batch_result.failed:
         result.tx_hash.hex(),
         repr(result.error),
     ))
+
+client.close()

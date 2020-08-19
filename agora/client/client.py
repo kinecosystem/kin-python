@@ -146,6 +146,12 @@ class BaseClient:
         """
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_earn_batch")
 
+    def close(self) -> None:
+        """Closes the connection-related resources (e.g. the gRPC channel) used by the client. Subsequent requests to
+        this client will cause an exception to be thrown.
+        """
+        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement close")
+
 
 class SubmitStellarTransactionResult:
     def __init__(self, tx_hash: Optional[bytes] = None,
@@ -186,10 +192,12 @@ class Client(BaseClient):
         if not grpc_channel:
             endpoint = endpoint if endpoint else _ENDPOINTS[env]
             ssl_credentials = grpc.ssl_channel_credentials()
-            grpc_channel = grpc.secure_channel(endpoint, ssl_credentials)
+            self.grpc_channel = grpc.secure_channel(endpoint, ssl_credentials)
+        else:
+            self.grpc_channel = grpc_channel
 
-        self.account_stub = account_pb_grpc.AccountStub(grpc_channel)
-        self.transaction_stub = tx_pb_grpc.TransactionStub(grpc_channel)
+        self.account_stub = account_pb_grpc.AccountStub(self.grpc_channel)
+        self.transaction_stub = tx_pb_grpc.TransactionStub(self.grpc_channel)
 
         self.whitelist_key = whitelist_key
 
@@ -347,6 +355,9 @@ class Client(BaseClient):
             failed.append(EarnResult(earn=earn))
 
         return BatchEarnResult(succeeded=succeeded, failed=failed)
+
+    def close(self) -> None:
+        self.grpc_channel.close()
 
     def _submit_earn_batch_tx(
         self, sender: PrivateKey, earns: List[Earn], source: Optional[PrivateKey] = None, memo: Optional[str] = None

@@ -19,3 +19,5 @@ try:
     print("account created")
 except AccountExistsError:
     print("account {} already exists".format(private_key.public_key.stellar_address))
+
+client.close()

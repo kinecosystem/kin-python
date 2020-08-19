@@ -106,6 +106,9 @@ class TestBaseClient:
         with pytest.raises(NotImplementedError):
             client.submit_earn_batch(private_key, [])
 
+        with pytest.raises(NotImplementedError):
+            client.close()
+
 
 # Filter warnings caused by instantiating Horizon inside AgoraApi
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")

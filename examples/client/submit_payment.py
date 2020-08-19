@@ -46,3 +46,5 @@ invoice = Invoice([LineItem("Test Payment", 100000, description="This is a descr
 payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks("1"),
                   invoice=invoice)
 submit_payment(payment)
+
+client.close()
