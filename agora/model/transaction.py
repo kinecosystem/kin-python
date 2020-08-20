@@ -33,6 +33,10 @@ class TransactionData:
                 all(payment == other.payments[idx] for idx, payment in enumerate(self.payments)) and
                 self.error == other.error)
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'tx_hash={self.tx_hash}, payments={[p for p in self.payments]!r}, error={self.error!r})'
+
     @classmethod
     def from_proto(cls, item: tx_pb.HistoryItem) -> 'TransactionData':
         data = cls(

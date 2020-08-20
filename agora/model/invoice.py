@@ -25,6 +25,10 @@ class LineItem:
 
         return self.to_proto().SerializeToString() == other.to_proto().SerializeToString()
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'title={self.title}, amount={self.amount}, description={self.description}, sku={self.sku})'
+
     @classmethod
     def from_proto(cls, proto: model_pb2.Invoice.LineItem) -> 'LineItem':
         return cls(
@@ -58,6 +62,10 @@ class Invoice:
 
         return self.to_proto().SerializeToString() == other.to_proto().SerializeToString()
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'items={[item for item in self.items]!r})'
+
     @classmethod
     def from_proto(cls, proto: model_pb2.Invoice) -> 'Invoice':
         return cls([LineItem.from_proto(item) for item in proto.items])
@@ -81,6 +89,10 @@ class InvoiceList:
             return False
 
         return self.to_proto().SerializeToString() == other.to_proto().SerializeToString()
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'invoices={[inv for inv in self.invoices]!r})'
 
     @classmethod
     def from_proto(cls, proto: model_pb2.InvoiceList) -> 'InvoiceList':

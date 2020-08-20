@@ -26,15 +26,15 @@ class TestReadOnlyPayment:
         assert len(payments) == 2
 
         assert payments[0].sender.raw == acc1.ed25519
-        assert payments[0].dest.raw == acc2.ed25519
-        assert payments[0].payment_type == TransactionType.UNKNOWN
+        assert payments[0].destination.raw == acc2.ed25519
+        assert payments[0].tx_type == TransactionType.UNKNOWN
         assert payments[0].quarks == 20
         assert not payments[0].invoice
         assert payments[0].memo == 'somememo'
 
         assert payments[1].sender.raw == acc2.ed25519
-        assert payments[1].dest.raw == acc3.ed25519
-        assert payments[1].payment_type == TransactionType.UNKNOWN
+        assert payments[1].destination.raw == acc3.ed25519
+        assert payments[1].tx_type == TransactionType.UNKNOWN
         assert payments[1].quarks == 40
         assert not payments[1].invoice
         assert payments[1].memo == 'somememo'
@@ -69,15 +69,15 @@ class TestReadOnlyPayment:
         assert len(payments) == 2
 
         assert payments[0].sender.raw == acc1.ed25519
-        assert payments[0].dest.raw == acc2.ed25519
-        assert payments[0].payment_type == TransactionType.P2P
+        assert payments[0].destination.raw == acc2.ed25519
+        assert payments[0].tx_type == TransactionType.P2P
         assert payments[0].quarks == 20
         assert payments[0].invoice == Invoice.from_proto(il.invoices[0])
         assert not payments[0].memo
 
         assert payments[1].sender.raw == acc2.ed25519
-        assert payments[1].dest.raw == acc3.ed25519
-        assert payments[1].payment_type == TransactionType.P2P
+        assert payments[1].destination.raw == acc3.ed25519
+        assert payments[1].tx_type == TransactionType.P2P
         assert payments[1].quarks == 40
         assert payments[1].invoice == Invoice.from_proto(il.invoices[1])
         assert not payments[1].memo

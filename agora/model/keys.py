@@ -22,6 +22,10 @@ class PublicKey:
 
         return self._verify_key == other._verify_key
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'public_key={bytes(self._verify_key)})'
+
     @classmethod
     def from_string(cls, address: str) -> 'PublicKey':
         """Parses the provided Stellar-encoded address and returns a PublicKey.
@@ -68,6 +72,10 @@ class PrivateKey:
             return False
 
         return self._signing_key == other._signing_key
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'private_key={bytes(self._signing_key)})'
 
     @classmethod
     def random(cls):

@@ -269,7 +269,7 @@ class Client(BaseClient):
                 invoice_list = InvoiceList(invoices=[payment.invoice])
 
             fk = invoice_list.get_sha_224_hash() if payment.invoice else b''
-            memo = AgoraMemo.new(1, payment.payment_type, self.app_index, fk)
+            memo = AgoraMemo.new(1, payment.tx_type, self.app_index, fk)
             builder.add_hash_memo(memo.val)
 
         builder.append_payment_op(

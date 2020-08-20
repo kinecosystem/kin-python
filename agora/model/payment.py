@@ -15,7 +15,7 @@ class Payment:
 
     :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account from which funds will be sent.
     :param destination: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to which funds will be sent.
-    :param payment_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this payment.
+    :param tx_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this payment.
     :param quarks: The amount being sent.
     :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account that will act as the
         source of the transaction. If unset, the sender will be used as the transaction source.
@@ -29,12 +29,12 @@ class Payment:
     """
 
     def __init__(
-        self, sender: PrivateKey, destination: PublicKey, payment_type: TransactionType, quarks: int,
+        self, sender: PrivateKey, destination: PublicKey, tx_type: TransactionType, quarks: int,
         source: Optional[PrivateKey] = None, invoice: Optional[Invoice] = None, memo: Optional[str] = None
     ):
         self.sender = sender
         self.destination = destination
-        self.payment_type = payment_type
+        self.tx_type = tx_type
         self.quarks = quarks
         self.source = source
 
@@ -50,11 +50,16 @@ class Payment:
 
         return (self.sender == other.sender and
                 self.destination == other.destination and
-                self.payment_type == other.payment_type and
+                self.tx_type == other.tx_type and
                 self.quarks == other.quarks and
                 self.source == other.source and
                 self.invoice == other.invoice and
                 self.memo == other.memo)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'sender={self.sender!r}, destination={self.destination!r}, tx_type={self.tx_type!r}, ' \
+               f'quarks={self.quarks}, source={self.source!r}, invoice={self.invoice!r}, memo={self.memo!r})'
 
 
 class ReadOnlyPayment:
@@ -62,8 +67,8 @@ class ReadOnlyPayment:
     history.
 
     :param sender: The :class:`PublicKey <agora.model.keys.PublicKey` of the sending account.
-    :param dest: The :class:`PublicKey <agora.model.keys.PublicKey` of the destination account.
-    :param payment_type: The type of this payment.
+    :param destination: The :class:`PublicKey <agora.model.keys.PublicKey` of the destination account.
+    :param tx_type: The type of this payment.
     :param quarks: The amount of the payment.
     :param invoice: (optional) The :class:`Invoice <agora.model.invoice.Invoice>` associated with this payment. Only one
         of invoice or memo will be set.
@@ -71,12 +76,12 @@ class ReadOnlyPayment:
     """
 
     def __init__(
-        self, sender: PublicKey, dest: PublicKey, payment_type: TransactionType, quarks: int,
+        self, sender: PublicKey, destination: PublicKey, tx_type: TransactionType, quarks: int,
         invoice: Optional[Invoice] = None, memo: Optional[str] = None
     ):
         self.sender = sender
-        self.dest = dest
-        self.payment_type = payment_type
+        self.destination = destination
+        self.tx_type = tx_type
         self.quarks = quarks
         self.invoice = invoice
         self.memo = memo
@@ -86,11 +91,16 @@ class ReadOnlyPayment:
             return False
 
         return (self.sender == other.sender and
-                self.dest == other.dest and
-                self.payment_type == other.payment_type and
+                self.destination == other.destination and
+                self.tx_type == other.tx_type and
                 self.quarks == other.quarks and
                 self.invoice == other.invoice and
                 self.memo == other.memo)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'sender={self.sender!r}, destination={self.destination!r}, tx_type={self.tx_type!r}, ' \
+               f'quarks={self.quarks}, invoice={self.invoice!r}, memo={self.memo!r})'
 
     @classmethod
     def payments_from_envelope(
@@ -130,8 +140,8 @@ class ReadOnlyPayment:
 
             payments.append(ReadOnlyPayment(
                 sender=PublicKey.from_string(op.source if op.source else tx.source.decode()),
-                dest=PublicKey.from_string(op.destination),
-                payment_type=agora_memo.tx_type() if agora_memo else
+                destination=PublicKey.from_string(op.destination),
+                tx_type=agora_memo.tx_type() if agora_memo else
                 TransactionType.UNKNOWN,
                 quarks=kin_to_quarks(op.amount),
                 invoice=Invoice.from_proto(inv) if inv else None,

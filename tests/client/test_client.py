@@ -213,8 +213,8 @@ class TestAgoraClient:
 
         payment1 = tx_data.payments[0]
         assert payment1.sender.raw == acc1.ed25519
-        assert payment1.dest.raw == acc2.ed25519
-        assert payment1.payment_type == memo.tx_type()
+        assert payment1.destination.raw == acc2.ed25519
+        assert payment1.tx_type == memo.tx_type()
         assert payment1.quarks == 15
         assert (payment1.invoice.to_proto().SerializeToString() == il.invoices[0].SerializeToString())
         assert not payment1.memo

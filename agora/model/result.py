@@ -27,6 +27,10 @@ class EarnResult:
                 self.tx_hash == other.tx_hash and
                 self.error == other.error)
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'earn={self.earn!r}, tx_hash={self.tx_hash}, error={self.error!r})'
+
 
 class BatchEarnResult:
     """The :class:`BatchEarnResult <BatchEarnResult>` object, which contains the results of a submitted earn batch.
@@ -45,3 +49,7 @@ class BatchEarnResult:
 
         return (all(result == other.succeeded[idx] for idx, result in enumerate(self.succeeded)) and
                 all(result == other.failed[idx] for idx, result in enumerate(self.failed)))
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'succeeded={[s for s in self.succeeded]!r}, failed={[f for f in self.failed]!r})'

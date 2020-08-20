@@ -24,3 +24,7 @@ class Earn:
         return (self.destination == other.destination and
                 self.quarks == other.quarks and
                 self.invoice == other.invoice)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'destination={self.destination!r}, quarks={self.quarks}, invoice={self.invoice!r})'

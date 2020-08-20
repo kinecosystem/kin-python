@@ -26,6 +26,10 @@ class AgoraMemo:
 
         return self.val == other.val
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}(' \
+               f'val={self.val})'
+
     @classmethod
     def new(cls, version: int, tx_type: TransactionType, app_index: int, foreign_key: bytes) -> 'AgoraMemo':
         """Returns an Agora memo containing the provided properties.
