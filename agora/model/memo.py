@@ -42,10 +42,13 @@ class AgoraMemo:
 
         :return: an :class:`AgoraMemo <AgoraMemo>` object
         """
-        if version > 7:
+        if version < 0 or version > 7:
             raise ValueError("invalid version")
 
-        if 0 > app_index > 2 ** 16 - 1:
+        if tx_type < 0 or tx_type > 2 ** 5 - 1:
+            raise ValueError("invalid transaction type")
+
+        if app_index < 0 or app_index > 2 ** 16 - 1:
             raise ValueError("invalid app index")
 
         if len(foreign_key) > 29:

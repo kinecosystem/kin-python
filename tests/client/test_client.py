@@ -101,7 +101,7 @@ class TestBaseClient:
             client.get_balance(public_key)
 
         with pytest.raises(NotImplementedError):
-            client.submit_payment(Payment(private_key, public_key, TransactionType.UNKNOWN, 0))
+            client.submit_payment(Payment(private_key, public_key, TransactionType.NONE, 0))
 
         with pytest.raises(NotImplementedError):
             client.submit_earn_batch(private_key, [])
@@ -131,7 +131,7 @@ class TestAgoraClient:
             client.get_balance(public_key)
 
         with pytest.raises(UnsupportedVersionError):
-            client.submit_payment(Payment(private_key, public_key, TransactionType.UNKNOWN, 0))
+            client.submit_payment(Payment(private_key, public_key, TransactionType.NONE, 0))
 
         with pytest.raises(UnsupportedVersionError):
             client.submit_earn_batch(private_key, [])

@@ -23,7 +23,7 @@ class TestMemo:
             assert m.foreign_key() == empty_fk
 
         # Test all transaction types
-        for tx_type in TransactionType:
+        for tx_type in list(TransactionType)[1:]:
             m = AgoraMemo.new(1, TransactionType(tx_type), 1, b'')
 
             assert m.val[0] & 0x3 == MAGIC_BYTE
@@ -70,9 +70,28 @@ class TestMemo:
             assert actual_fk[i] == 0
 
     def test_new_invalid(self):
+        # Invalid version
+        with pytest.raises(ValueError):
+            AgoraMemo.new(-1, TransactionType.EARN, 1, bytes(29))
+
         with pytest.raises(ValueError):
             AgoraMemo.new(8, TransactionType.EARN, 1, bytes(29))
 
+        # Invalid tx type
+        with pytest.raises(ValueError):
+            AgoraMemo.new(1, TransactionType.UNKNOWN, 1, bytes(29))
+
+        with pytest.raises(ValueError):
+            AgoraMemo.new(1, 2 ** 5, 1, bytes(29))
+
+        # Invalid app index
+        with pytest.raises(ValueError):
+            AgoraMemo.new(1, TransactionType.NONE, -1, bytes(29))
+
+        with pytest.raises(ValueError):
+            AgoraMemo.new(1, TransactionType.NONE, 2 ** 16, bytes(29))
+
+        # Invalid foreign key
         with pytest.raises(ValueError):
             AgoraMemo.new(1, TransactionType.EARN, 1, bytes(30))
 
@@ -83,11 +102,6 @@ class TestMemo:
 
         # Invalid magic byte
         m.val[0] = MAGIC_BYTE >> 1
-        assert not m.is_valid()
-        assert not m.is_valid_strict()
-
-        # Invalid transaction type
-        m = AgoraMemo.new(1, TransactionType.UNKNOWN, 1, bytes(29))
         assert not m.is_valid()
         assert not m.is_valid_strict()
 
