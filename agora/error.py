@@ -10,6 +10,12 @@ class Error(Exception):
     """Base error for Agora SDK errors.
     """
 
+    def __repr__(self):
+        return f'{self.__class__.__name__}({", ".join(["{}={}".format(k, v) for k, v in self.__dict__.items()])})'
+
+    def __str__(self):
+        return repr(self)
+
 
 class UnsupportedVersionError(Error):
     """Raised when an unsupported version of Kin is used
@@ -74,8 +80,8 @@ class WebhookRequestError(Error):
     :param response_body: The response body to respond with.
     """
 
-    def __init__(self, status_code: int, *args, response_body: str = "", **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, status_code: int, response_body: str = ""):
+        super().__init__()
         self.status_code = status_code
         self.response_body = response_body
 
@@ -106,8 +112,8 @@ class InvoiceErrorReason(IntEnum):
 
 
 class OperationInvoiceError(Error):
-    def __init__(self, op_index: int, reason: InvoiceErrorReason, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, op_index: int, reason: InvoiceErrorReason):
+        super().__init__()
         self.op_index = op_index
         self.reason = reason
 
