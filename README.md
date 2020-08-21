@@ -93,7 +93,7 @@ tx_hash = client.submit_payment(payment)
 A `Payment` has the following required properties:
 - `sender`: The private key of the account from which the payment will be sent.
 - `destination`: The public key of the account to which the payment will be sent.
-- `payment_type`: The transaction type of the payment.
+- `tx_type`: The transaction type of the payment.
 - `quarks`: The amount of the payment, in [quarks](https://docs.kin.org/terms-and-concepts#quark).
 
 Additionally, it has some optional properties:
