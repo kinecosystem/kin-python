@@ -17,8 +17,8 @@ class Payment:
     :param destination: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to which funds will be sent.
     :param tx_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this payment.
     :param quarks: The amount being sent.
-    :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account that will act as the
-        source of the transaction. If unset, the sender will be used as the transaction source.
+    :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the channel account that will be
+        used as the source of the transaction. If unset, the `sender` will be used as the transaction source.
 
         On Stellar, this is where the transaction fee and sequence number is taken/chosen from.
 
@@ -30,13 +30,13 @@ class Payment:
 
     def __init__(
         self, sender: PrivateKey, destination: PublicKey, tx_type: TransactionType, quarks: int,
-        source: Optional[PrivateKey] = None, invoice: Optional[Invoice] = None, memo: Optional[str] = None
+        channel: Optional[PrivateKey] = None, invoice: Optional[Invoice] = None, memo: Optional[str] = None
     ):
         self.sender = sender
         self.destination = destination
         self.tx_type = tx_type
         self.quarks = quarks
-        self.source = source
+        self.channel = channel
 
         if invoice and memo:
             raise ValueError("only one of `invoice` or `memo` can be set, not both")
@@ -52,14 +52,14 @@ class Payment:
                 self.destination == other.destination and
                 self.tx_type == other.tx_type and
                 self.quarks == other.quarks and
-                self.source == other.source and
+                self.channel == other.channel and
                 self.invoice == other.invoice and
                 self.memo == other.memo)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
                f'sender={self.sender!r}, destination={self.destination!r}, tx_type={self.tx_type!r}, ' \
-               f'quarks={self.quarks}, source={self.source!r}, invoice={self.invoice!r}, memo={self.memo!r})'
+               f'quarks={self.quarks}, channel={self.channel!r}, invoice={self.invoice!r}, memo={self.memo!r})'
 
 
 class ReadOnlyPayment:

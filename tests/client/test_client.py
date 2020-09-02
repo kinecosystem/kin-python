@@ -291,27 +291,27 @@ class TestAgoraClient:
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_payment_with_source(self, grpc_channel, executor, app_index_client):
+    def test_submit_payment_with_channel(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
         dest = PrivateKey.random().public_key
-        source = PrivateKey.random()
+        channel = PrivateKey.random()
         payment = Payment(sender, dest, TransactionType.EARN, 100000,
-                          source=source)
+                          channel=channel)
 
         future = executor.submit(app_index_client.submit_payment, payment)
 
-        account_req = self._set_successful_get_account_info_response(grpc_channel, source, 10)
+        account_req = self._set_successful_get_account_info_response(grpc_channel, channel, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_response(grpc_channel, b'somehash', result_xdr)
 
         assert future.result() == b'somehash'
 
-        assert account_req.account_id.value == source.public_key.stellar_address
+        assert account_req.account_id.value == channel.public_key.stellar_address
 
-        expected_signers = [source, sender]
+        expected_signers = [channel, sender]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-        self._assert_payment_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, expected_memo,
+        self._assert_payment_envelope(submit_req.envelope_xdr, expected_signers, channel, 100, 11, expected_memo,
                                       payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
@@ -593,14 +593,14 @@ class TestAgoraClient:
                                          expected_memo, sender, all_earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_with_source(self, grpc_channel, executor, app_index_client):
+    def test_submit_earn_batch_with_channel(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
-        source = PrivateKey.random()
+        channel = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns, source=source)
+        future = executor.submit(app_index_client.submit_earn_batch, sender, earns, channel=channel)
 
-        account_req = self._set_successful_get_account_info_response(grpc_channel, source, 10)
+        account_req = self._set_successful_get_account_info_response(grpc_channel, channel, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_response(grpc_channel, b'somehash', result_xdr)
@@ -614,11 +614,11 @@ class TestAgoraClient:
         assert earn_result.tx_hash == b'somehash'
         assert not earn_result.error
 
-        assert account_req.account_id.value == source.public_key.stellar_address
+        assert account_req.account_id.value == channel.public_key.stellar_address
 
-        expected_signers = [source, sender]
+        expected_signers = [channel, sender]
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, source, 100, 11, expected_memo,
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, expected_signers, channel, 100, 11, expected_memo,
                                          sender, earns)
         assert len(submit_req.invoice_list.invoices) == 0
 

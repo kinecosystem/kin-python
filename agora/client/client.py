@@ -129,14 +129,14 @@ class BaseClient:
         raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_payment")
 
     def submit_earn_batch(
-        self, sender: PrivateKey, earns: List[Earn], source: Optional[PrivateKey] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None
     ) -> BatchEarnResult:
         """Submit multiple earn payments.
 
         :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the transaction source
-            account. If not set, the sender will be used as the source.
+        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of a channel account to use as
+            the transaction source. If not set, the `sender` will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
 
@@ -259,7 +259,7 @@ class Client(BaseClient):
         if payment.invoice and self.app_index <= 0:
             raise ValueError("cannot submit a payment with an invoice without an app index")
 
-        builder = self._get_stellar_builder(payment.source if payment.source else payment.sender)
+        builder = self._get_stellar_builder(payment.channel if payment.channel else payment.sender)
 
         invoice_list = None
         if payment.memo:
@@ -278,8 +278,8 @@ class Client(BaseClient):
             source=payment.sender.public_key.stellar_address,
         )
 
-        if payment.source:
-            signers = [payment.source, payment.sender]
+        if payment.channel:
+            signers = [payment.channel, payment.sender]
         else:
             signers = [payment.sender]
 
@@ -313,7 +313,7 @@ class Client(BaseClient):
         return result.tx_hash
 
     def submit_earn_batch(
-        self, sender: PrivateKey, earns: List[Earn], source: Optional[bytes] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, earns: List[Earn], channel: Optional[bytes] = None, memo: Optional[str] = None
     ) -> BatchEarnResult:
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError
@@ -331,7 +331,7 @@ class Client(BaseClient):
         failed = []
         for earn_batch in partition(earns, 100):
             try:
-                result = self._submit_earn_batch_tx(sender, earn_batch, source, memo)
+                result = self._submit_earn_batch_tx(sender, earn_batch, channel, memo)
             except Error as e:
                 failed += [EarnResult(earn, error=e) for idx, earn in enumerate(earn_batch)]
                 break
@@ -360,15 +360,15 @@ class Client(BaseClient):
         self.grpc_channel.close()
 
     def _submit_earn_batch_tx(
-        self, sender: PrivateKey, earns: List[Earn], source: Optional[PrivateKey] = None, memo: Optional[str] = None
+        self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None
     ) -> SubmitStellarTransactionResult:
         """ Submits a single transaction for a batch of earns. An error will be raised if the number of earns exceeds
         the capacity of a single transaction.
 
         :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param source: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the transaction source
-            account. If not set, the sender will be used as the source.
+        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the channel account to use
+            as the transaction source. If not set, the sender will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
 
@@ -377,7 +377,7 @@ class Client(BaseClient):
         if len(earns) > 100:
             raise ValueError("cannot send more than 100 earns")
 
-        builder = self._get_stellar_builder(source if source else sender)
+        builder = self._get_stellar_builder(channel if channel else sender)
 
         invoices = [earn.invoice for earn in earns if earn.invoice]
         invoice_list = InvoiceList(invoices) if invoices else None
@@ -395,8 +395,8 @@ class Client(BaseClient):
                 source=sender.public_key.stellar_address,
             )
 
-        if source:
-            signers = [source, sender]
+        if channel:
+            signers = [channel, sender]
         else:
             signers = [sender]
 
