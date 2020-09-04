@@ -518,23 +518,25 @@ class TestAgoraClient:
             result_xdr=result_xdr,
         )
 
-        account_reqs = []
+        account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
         submit_reqs = []
         for i in range(_config_with_nonce_retry.max_nonce_refreshes + 1):
             # this blocks until the system under test invokes the RPC, so if the test completes then the RPC was called
             # the expected number of times.
-            account_reqs.append(self._set_successful_get_account_info_response(grpc_channel, sender, 10))
-            submit_reqs.append(self._set_submit_transaction_response(grpc_channel, resp))
+            req = self._set_submit_transaction_response(grpc_channel, resp)
+            submit_reqs.append(req)
+            env = te.TransactionEnvelope.from_xdr(base64.b64encode(req.envelope_xdr))
+            print(env)
 
         with pytest.raises(BadNonceError):
             future.result()
 
-        for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.stellar_address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-        for submit_req in submit_reqs:
-            self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
+        for idx, submit_req in enumerate(submit_reqs):
+            self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11 + idx, expected_memo,
+                                          payment)
             assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_earn_batch_multiple(self, grpc_channel, executor, app_index_client):
@@ -923,12 +925,11 @@ class TestAgoraClient:
             result_xdr=result_xdr,
         )
 
-        account_reqs = []
+        account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
         submit_reqs = []
         for i in range(_config_with_nonce_retry.max_nonce_refreshes + 1):
             # this blocks until the system under test invokes the RPC, so if the test completes then the RPC was called
             # the expected number of times.
-            account_reqs.append(self._set_successful_get_account_info_response(grpc_channel, sender, 10))
             submit_reqs.append(self._set_submit_transaction_response(grpc_channel, resp))
 
         batch_earn_result = future.result()
@@ -940,12 +941,11 @@ class TestAgoraClient:
         assert earn_result.earn == earns[0]
         assert isinstance(earn_result.error, BadNonceError)
 
-        for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.stellar_address
+        assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-        for submit_req in submit_reqs:
-            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo,
+        for idx, submit_req in enumerate(submit_reqs):
+            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11 + idx, expected_memo,
                                              sender,
                                              earns)
             assert len(submit_req.invoice_list.invoices) == 0

@@ -413,16 +413,23 @@ class Client(BaseClient):
     def _sign_and_submit_builder(
         self, signers: List[PrivateKey], builder: kin_base.Builder, invoice_list: Optional[InvoiceList] = None
     ) -> SubmitStellarTransactionResult:
-        def _sign_and_submit():
-            builder.te = None  # reset the envelope
-            source_info = self._get_stellar_account_info(signers[0].public_key)
-            builder.sequence = source_info.sequence_number + 1
+        source_info = self._get_stellar_account_info(signers[0].public_key)
+        offset = 1
 
+        def _sign_and_submit():
+            nonlocal offset
+
+            # reset generated tx and te
+            builder.tx = None
+            builder.te = None
+
+            builder.sequence = source_info.sequence_number + offset
             for signer in signers:
                 builder.sign(signer.stellar_seed)
 
             result = self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
             if result.tx_error and isinstance(result.tx_error.tx_error, BadNonceError):
+                offset += 1
                 raise result.tx_error.tx_error
 
             return result
