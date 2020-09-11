@@ -1,6 +1,7 @@
 import base64
 from concurrent import futures
 from typing import List
+import sys
 
 import grpc
 import grpc_testing
@@ -11,7 +12,7 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base import transaction_envelope as te, memo, operation
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
-from agora.client.client import Client, RetryConfig, BaseClient
+from agora.client.client import Client, RetryConfig, BaseClient, _SDK_VERSION
 from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBalanceError, \
     DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
@@ -22,7 +23,7 @@ from agora.model.keys import PrivateKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
-from agora.utils import partition, kin_to_quarks, quarks_to_kin
+from agora.utils import partition, kin_to_quarks, quarks_to_kin, user_agent
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
     gen_payment_op_result, gen_result_xdr, gen_hash_memo
 
@@ -140,12 +141,13 @@ class TestAgoraClient:
         private_key = PrivateKey.random()
         future = executor.submit(app_index_client.create_account, private_key)
 
-        _, request, rpc = grpc_channel.take_unary_unary(
+        md, request, rpc = grpc_channel.take_unary_unary(
             account_pb.DESCRIPTOR.services_by_name['Account'].methods_by_name['CreateAccount']
         )
 
         rpc.terminate(account_pb.CreateAccountResponse(), (), grpc.StatusCode.OK, '')
 
+        self._assert_user_agent(md)
         assert request.account_id.value == private_key.public_key.stellar_address
         assert not future.result()
 
@@ -153,7 +155,7 @@ class TestAgoraClient:
         private_key = PrivateKey.random()
         application_future = executor.submit(app_index_client.create_account, private_key)
 
-        _, request, rpc = grpc_channel.take_unary_unary(
+        md, request, rpc = grpc_channel.take_unary_unary(
             account_pb.DESCRIPTOR.services_by_name['Account'].methods_by_name['CreateAccount']
         )
         resp = account_pb.CreateAccountResponse(result=account_pb.CreateAccountResponse.Result.EXISTS)
@@ -162,13 +164,14 @@ class TestAgoraClient:
         with pytest.raises(AccountExistsError):
             application_future.result()
 
+        self._assert_user_agent(md)
         assert request.account_id.value == private_key.public_key.stellar_address
 
     def test_get_transaction(self, grpc_channel, executor, app_index_client):
         tx_hash = b'somehash'
         future = executor.submit(app_index_client.get_transaction, tx_hash)
 
-        _, request, rpc = grpc_channel.take_unary_unary(
+        md, request, rpc = grpc_channel.take_unary_unary(
             tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
         )
 
@@ -206,6 +209,8 @@ class TestAgoraClient:
         )
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
 
+        self._assert_user_agent(md)
+
         tx_data = future.result()
         assert tx_data.tx_hash == tx_hash
         assert len(tx_data.payments) == 1
@@ -225,7 +230,7 @@ class TestAgoraClient:
         tx_hash = b'somehash'
         future = executor.submit(app_index_client.get_transaction, tx_hash)
 
-        _, request, rpc = grpc_channel.take_unary_unary(
+        md, request, rpc = grpc_channel.take_unary_unary(
             tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
         )
 
@@ -235,6 +240,7 @@ class TestAgoraClient:
         with pytest.raises(TransactionNotFound):
             future.result()
 
+        self._assert_user_agent(md)
         assert request.transaction_hash.value == tx_hash
 
     def test_get_balance(self, grpc_channel, executor, app_index_client):
@@ -252,8 +258,6 @@ class TestAgoraClient:
             )
         )
         req = self._set_get_account_info_response(grpc_channel, resp)
-
-        assert future.result() == 100000
 
         assert req.account_id.value == private_key.public_key.stellar_address
 
@@ -955,10 +959,11 @@ class TestAgoraClient:
         channel: grpc_testing.Channel, resp: account_pb.GetAccountInfoResponse,
         status: grpc.StatusCode = grpc.StatusCode.OK
     ) -> account_pb.GetAccountInfoRequest:
-        _, request, rpc = channel.take_unary_unary(
+        md, request, rpc = channel.take_unary_unary(
             account_pb.DESCRIPTOR.services_by_name['Account'].methods_by_name['GetAccountInfo']
         )
         rpc.terminate(resp, (), status, '')
+        TestAgoraClient._assert_user_agent(md)
         return request
 
     @staticmethod
@@ -982,10 +987,11 @@ class TestAgoraClient:
         channel: grpc_testing.Channel, resp: tx_pb.SubmitTransactionResponse,
         status: grpc.StatusCode = grpc.StatusCode.OK
     ) -> tx_pb.SubmitTransactionRequest:
-        _, request, rpc = channel.take_unary_unary(
+        md, request, rpc = channel.take_unary_unary(
             tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['SubmitTransaction']
         )
         rpc.terminate(resp, (), status, '')
+        TestAgoraClient._assert_user_agent(md)
         return request
 
     @staticmethod
@@ -1048,3 +1054,8 @@ class TestAgoraClient:
         assert tx.fee == fee
         assert tx.sequence == sequence
         assert tx.memo == tx_memo
+
+    @staticmethod
+    def _assert_user_agent(md):
+        assert len(md) == 3
+        assert md[:2] == user_agent(_SDK_VERSION)

@@ -1,5 +1,7 @@
 import decimal
+import sys
 
+_KIN_USER_AGENT_HEADER = 'kin-user-agent'
 _KIN_TO_QUARKS = decimal.Decimal(10 ** 5)
 _PRECISION = decimal.Decimal('0.00001')
 
@@ -16,6 +18,10 @@ def partition(l, size):
     """
     return [l[i:i + size] for i in range(0, len(l), size)]
 
+def user_agent(version) -> ():
+    return (
+        _KIN_USER_AGENT_HEADER, f'KinSDK/{version} python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}-{sys.version_info.releaselevel}'
+    )
 
 def kin_to_quarks(kin: str) -> int:
     """Converts a string kin amount to quarks. If the provided Kin amount contains more than 5 decimal places (i.e.

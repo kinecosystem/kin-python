@@ -24,9 +24,11 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy
-from agora.utils import partition, quarks_to_kin
+from agora.utils import partition, quarks_to_kin, user_agent
 
 _SUPPORTED_VERSIONS = [3]
+
+_SDK_VERSION = '0.3.0'
 
 _ENDPOINTS = {
     Environment.PRODUCTION: "api.agorainfra.net:443",
@@ -219,6 +221,8 @@ class Client(BaseClient):
         # but it does not get used to submit transactions
         self._horizon = kin_base.Horizon()
 
+        self._metadata = user_agent(_SDK_VERSION)
+
         # Since we don't actually use Horizon for any requests, call `self._horizon.close()` to preemptively ensure that
         # any open aiohttp.ClientSessions get closed.
         loop = asyncio.new_event_loop()
@@ -236,7 +240,7 @@ class Client(BaseClient):
             transaction_hash=model_pb2.TransactionHash(
                 value=tx_hash
             )
-        ), timeout=_GRPC_TIMEOUT_SECONDS)
+        ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
         if resp.state is tx_pb.GetTransactionResponse.State.UNKNOWN:
             raise TransactionNotFound()
@@ -444,8 +448,8 @@ class Client(BaseClient):
         resp = self.account_stub.CreateAccount(account_pb.CreateAccountRequest(
             account_id=model_pb2.StellarAccountId(
                 value=private_key.public_key.stellar_address
-            )
-        ), timeout=_GRPC_TIMEOUT_SECONDS)
+            ),
+        ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
             raise AccountExistsError()
 
@@ -458,8 +462,8 @@ class Client(BaseClient):
         resp = self.account_stub.GetAccountInfo(account_pb.GetAccountInfoRequest(
             account_id=model_pb2.StellarAccountId(
                 value=public_key.stellar_address
-            )
-        ), timeout=_GRPC_TIMEOUT_SECONDS)
+            ),
+        ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
         if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
             raise AccountNotFoundError
 
@@ -495,7 +499,7 @@ class Client(BaseClient):
                 envelope_xdr=tx_bytes,
                 invoice_list=invoice_list.to_proto() if invoice_list else None,
             )
-            resp = self.transaction_stub.SubmitTransaction(req, timeout=_GRPC_TIMEOUT_SECONDS)
+            resp = self.transaction_stub.SubmitTransaction(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
             result = SubmitStellarTransactionResult(tx_hash=resp.hash.value)
             if resp.result == tx_pb.SubmitTransactionResponse.Result.REJECTED:
