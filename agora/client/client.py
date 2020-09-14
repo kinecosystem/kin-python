@@ -25,10 +25,9 @@ from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy
 from agora.utils import partition, quarks_to_kin, user_agent
+from agora.version import VERSION
 
 _SUPPORTED_VERSIONS = [3]
-
-_SDK_VERSION = '0.3.0'
 
 _ENDPOINTS = {
     Environment.PRODUCTION: "api.agorainfra.net:443",
@@ -221,7 +220,7 @@ class Client(BaseClient):
         # but it does not get used to submit transactions
         self._horizon = kin_base.Horizon()
 
-        self._metadata = user_agent(_SDK_VERSION)
+        self._metadata = user_agent(VERSION)
 
         # Since we don't actually use Horizon for any requests, call `self._horizon.close()` to preemptively ensure that
         # any open aiohttp.ClientSessions get closed.

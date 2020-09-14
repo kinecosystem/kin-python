@@ -12,7 +12,7 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base import transaction_envelope as te, memo, operation
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
-from agora.client.client import Client, RetryConfig, BaseClient, _SDK_VERSION
+from agora.client.client import Client, RetryConfig, BaseClient
 from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBalanceError, \
     DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
@@ -24,6 +24,7 @@ from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
 from agora.utils import partition, kin_to_quarks, quarks_to_kin, user_agent
+from agora.version import VERSION
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
     gen_payment_op_result, gen_result_xdr, gen_hash_memo
 
@@ -1058,4 +1059,4 @@ class TestAgoraClient:
     @staticmethod
     def _assert_user_agent(md):
         assert len(md) == 3
-        assert md[:2] == user_agent(_SDK_VERSION)
+        assert md[:2] == user_agent(VERSION)
