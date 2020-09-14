@@ -1058,5 +1058,6 @@ class TestAgoraClient:
 
     @staticmethod
     def _assert_user_agent(md):
-        assert len(md) == 3
-        assert md[:2] == user_agent(VERSION)
+        assert len(md) == 2
+        assert len(md[0]) == 2
+        assert md[0] == user_agent(VERSION)

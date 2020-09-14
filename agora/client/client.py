@@ -220,7 +220,7 @@ class Client(BaseClient):
         # but it does not get used to submit transactions
         self._horizon = kin_base.Horizon()
 
-        self._metadata = user_agent(VERSION)
+        self._metadata = (user_agent(VERSION),)
 
         # Since we don't actually use Horizon for any requests, call `self._horizon.close()` to preemptively ensure that
         # any open aiohttp.ClientSessions get closed.
