@@ -1,5 +1,6 @@
 import decimal
 import sys
+from typing import Tuple
 
 _KIN_USER_AGENT_HEADER = 'kin-user-agent'
 _KIN_TO_QUARKS = decimal.Decimal(10 ** 5)
@@ -18,7 +19,7 @@ def partition(l, size):
     """
     return [l[i:i + size] for i in range(0, len(l), size)]
 
-def user_agent(version) -> ():
+def user_agent(version) -> Tuple[str, str]:
     return (
         _KIN_USER_AGENT_HEADER, f'KinSDK/{version} python/{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}-{sys.version_info.releaselevel}'
     )
