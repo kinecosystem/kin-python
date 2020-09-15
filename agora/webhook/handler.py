@@ -5,6 +5,7 @@ import json
 from json import JSONDecodeError
 from typing import Tuple, Callable, List, Optional
 
+from agora.client import Environment
 from agora.error import WebhookRequestError
 from agora.webhook.events import Event
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
@@ -21,7 +22,8 @@ class WebhookHandler:
     :param secret: The secret used to verify request signatures.
     """
 
-    def __init__(self, secret: Optional[str] = None):
+    def __init__(self, environment: Environment, secret: Optional[str] = None):
+        self.environment = environment
         self.secret = secret
 
     def is_valid_signature(self, req_body: str, signature: str) -> bool:
@@ -86,7 +88,7 @@ class WebhookHandler:
         except JSONDecodeError:
             return 400, 'invalid request body'
 
-        req = SignTransactionRequest.from_json(json_req_body)
+        req = SignTransactionRequest.from_json(json_req_body, self.environment)
         resp = SignTransactionResponse(req.envelope)
         try:
             f(req, resp)

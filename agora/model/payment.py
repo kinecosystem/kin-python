@@ -104,12 +104,13 @@ class ReadOnlyPayment:
 
     @classmethod
     def payments_from_envelope(
-        cls, envelope: te.TransactionEnvelope, invoice_list: Optional[model_pb2.InvoiceList] = None
-    ) -> List['ReadOnlyPayment']:
+        cls, envelope: te.TransactionEnvelope, invoice_list: Optional[model_pb2.InvoiceList] = None,
+        kin_version: Optional[int] = 3, ) -> List['ReadOnlyPayment']:
         """Returns a list of read only payments from a transaction envelope.
 
         :param envelope: A :class:`TransactionEnvelope <kin_base.transaction_envelope.TransactionEnvelope>.
         :param invoice_list: (optional) A protobuf invoice list associated with the transaction.
+        :param kin_version: (optional) The version of Kin to parse payments for.
         :return: A List of :class:`ReadOnlyPayment <ReadOnlyPayment>` objects.
         """
         if invoice_list and invoice_list.invoices and len(invoice_list.invoices) != len(envelope.tx.operations):
@@ -136,14 +137,24 @@ class ReadOnlyPayment:
             if not isinstance(op, operation.Payment):
                 continue
 
+            # Only Kin payment operations are supported in this method.
+            if kin_version == 2 and (op.asset.type != 'credit_alphanum4' or op.asset.code != 'KIN'):
+                continue
+
             inv = invoice_list.invoices[idx] if invoice_list and invoice_list.invoices else None
 
+            # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
+            # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
+            # Stellar denomination of 1e-7.
+            #
+            # When parsing an XDR transaction, `kin_base` assumes a smallest denomination of 1e-5. Therefore, for Kin 2
+            # transactions, we must divide the resulting amounts by 100 to account for the 100x scaling factor.
             payments.append(ReadOnlyPayment(
                 sender=PublicKey.from_string(op.source if op.source else tx.source.decode()),
                 destination=PublicKey.from_string(op.destination),
                 tx_type=agora_memo.tx_type() if agora_memo else
                 TransactionType.UNKNOWN,
-                quarks=kin_to_quarks(op.amount),
+                quarks=int(kin_to_quarks(op.amount) / 100) if kin_version == 2 else kin_to_quarks(op.amount),
                 invoice=Invoice.from_proto(inv) if inv else None,
                 memo=text_memo.text.decode() if text_memo else None,
             ))

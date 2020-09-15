@@ -5,10 +5,13 @@ import kin_base
 from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te
 
+from agora import KIN_2_PROD_NETWORK, KIN_2_TEST_NETWORK
+from agora.client import Environment
 from agora.error import InvoiceErrorReason, OperationInvoiceError
 from agora.model.invoice import InvoiceList
 from agora.model.keys import PrivateKey
 from agora.model.payment import ReadOnlyPayment
+from agora.utils import kin_2_envelope_from_xdr
 
 
 class SignTransactionRequest:
@@ -19,6 +22,11 @@ class SignTransactionRequest:
     :param kin_version: The version of Kin this transaction is using.
     :param envelope: (optional) The :class:`TransactionEnvelope <kin_base.transaction_envelope.TransactionEnvelope>`
         object. Only set on Stellar transactions.
+
+        Note: for Kin 2 transactions, Kin amounts inside the envelope will appear to be 100x larger than they are in
+        reality. This is due to the fact that the `kin_base` module (which is used to parse the Stellar envelope XDR
+        string) assumes a smallest denomination of 1e-5, but Kin 2 has a smallest denomination of 1e-7. An accurate
+        representation of the amounts can be found inside `payments`.
     """
 
     def __init__(
@@ -29,15 +37,20 @@ class SignTransactionRequest:
         self.envelope = envelope
 
     @classmethod
-    def from_json(cls, data: dict):
+    def from_json(cls, data: dict, environment: Environment):
+        kin_version = data.get('kin_version')
+        if not kin_version:
+            kin_version = 3
+
         envelope_xdr = data.get('envelope_xdr', "")
         if len(envelope_xdr) == 0:
             raise ValueError('envelope_xdr is required')
-        env = te.TransactionEnvelope.from_xdr(envelope_xdr)
 
-        kin_version = data.get('kin_version')
-        if not kin_version:
-            raise ValueError('kin_version is required')
+        if kin_version == 2:
+            network_id = KIN_2_PROD_NETWORK if environment == Environment.PRODUCTION else KIN_2_TEST_NETWORK
+            env = kin_2_envelope_from_xdr(network_id, envelope_xdr)
+        else:
+            env = te.TransactionEnvelope.from_xdr(envelope_xdr)
 
         il_str = data.get('invoice_list')
         if il_str:
@@ -47,7 +60,7 @@ class SignTransactionRequest:
         else:
             il = None
 
-        return cls(ReadOnlyPayment.payments_from_envelope(env, il), kin_version, envelope=env)
+        return cls(ReadOnlyPayment.payments_from_envelope(env, il, kin_version=kin_version), kin_version, envelope=env)
 
     def get_tx_hash(self) -> bytes:
         """Returns the transaction hash of the transaction being signed.

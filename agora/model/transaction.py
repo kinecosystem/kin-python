@@ -38,13 +38,13 @@ class TransactionData:
                f'tx_hash={self.tx_hash}, payments={[p for p in self.payments]!r}, error={self.error!r})'
 
     @classmethod
-    def from_proto(cls, item: tx_pb.HistoryItem) -> 'TransactionData':
+    def from_proto(cls, item: tx_pb.HistoryItem, kin_version: Optional[int] = 3) -> 'TransactionData':
         data = cls(
             item.hash.value,
             error=TransactionErrors.from_result(item.result_xdr),
         )
         if item.envelope_xdr:
             env = te.TransactionEnvelope.from_xdr(base64.b64encode(item.envelope_xdr))
-            data.payments = ReadOnlyPayment.payments_from_envelope(env, item.invoice_list)
+            data.payments = ReadOnlyPayment.payments_from_envelope(env, item.invoice_list, kin_version=kin_version)
 
         return data

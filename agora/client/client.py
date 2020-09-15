@@ -8,6 +8,7 @@ from agoraapi.account.v3 import account_service_pb2 as account_pb, account_servi
 from agoraapi.common.v3 import model_pb2
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb, transaction_service_pb2_grpc as tx_pb_grpc
 
+from agora import KIN_2_PROD_NETWORK, KIN_2_TEST_NETWORK
 from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
@@ -27,17 +28,32 @@ from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryE
 from agora.utils import partition, quarks_to_kin, user_agent
 from agora.version import VERSION
 
-_SUPPORTED_VERSIONS = [3]
+_SUPPORTED_VERSIONS = [2, 3]
 
 _ENDPOINTS = {
-    Environment.PRODUCTION: "api.agorainfra.net:443",
-    Environment.TEST: "api.agorainfra.dev:443"
+    Environment.PRODUCTION: 'api.agorainfra.net:443',
+    Environment.TEST: 'api.agorainfra.dev:443',
 }
 
+# kin_base handles conversion of the network name to the appropriate passphrase if recognizes it, but otherwise will
+# use the provided network name as the passphrase
 _NETWORK_NAMES = {
-    Environment.PRODUCTION: "PUBLIC",
-    Environment.TEST: "TESTNET",
+    2: {
+        Environment.PRODUCTION: KIN_2_PROD_NETWORK,
+        Environment.TEST: KIN_2_TEST_NETWORK,
+    },
+    3: {
+        Environment.PRODUCTION: 'PUBLIC',
+        Environment.TEST: 'TESTNET',
+    },
 }
+
+_KIN_2_ISSUERS = {
+    Environment.PRODUCTION: 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK',
+    Environment.TEST: 'GBC3SG6NGTSZ2OMH3FFGB7UVRQWILW367U4GSOOF4TFSZONV42UJXUH7',
+}
+
+_KIN_2_ASSET_CODE = 'KIN'
 
 _NON_RETRIABLE_ERRORS = [
     AccountExistsError,
@@ -177,14 +193,18 @@ class Client(BaseClient):
         endpoint should be set.
     :param retry_config: (optional): A :class:`RetryConfig <RetryConfig>` object to configure Agora retries. If not
         provided, a default configuration will be used.
+    :param kin_version: (optional): The version of Kin to use. Defaults to using Kin 3.
     """
 
     def __init__(
         self, env: Environment, app_index: int = 0, whitelist_key: Optional[PrivateKey] = None,
         grpc_channel: Optional[grpc.Channel] = None, endpoint: Optional[str] = None,
-        retry_config: Optional[RetryConfig] = None,
+        retry_config: Optional[RetryConfig] = None, kin_version: Optional[int] = 3,
     ):
-        self.network_name = _NETWORK_NAMES[env]
+        if kin_version not in _SUPPORTED_VERSIONS:
+            raise ValueError("{} is not a supported version of Kin".format(kin_version))
+
+        self.network_name = _NETWORK_NAMES[kin_version][env]
         self.app_index = app_index
 
         if grpc_channel and endpoint:
@@ -214,13 +234,20 @@ class Client(BaseClient):
             LimitStrategy(self.retry_config.max_nonce_refreshes + 1)
         ]
 
-        self._kin_version = 3
+        self._kin_version = kin_version
+        if kin_version == 2:
+            self._asset_issuer = _KIN_2_ISSUERS[env]
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', str(self._kin_version)),
+            )
+        else:
+            self._asset_issuer = None
+            self._metadata = (user_agent(VERSION),)
 
         # This Horizon instance is necessary to use the kin_base.Builder object,
         # but it does not get used to submit transactions
         self._horizon = kin_base.Horizon()
-
-        self._metadata = (user_agent(VERSION),)
 
         # Since we don't actually use Horizon for any requests, call `self._horizon.close()` to preemptively ensure that
         # any open aiohttp.ClientSessions get closed.
@@ -244,7 +271,7 @@ class Client(BaseClient):
         if resp.state is tx_pb.GetTransactionResponse.State.UNKNOWN:
             raise TransactionNotFound()
         if resp.state == tx_pb.GetTransactionResponse.State.SUCCESS:
-            return TransactionData.from_proto(resp.item)
+            return TransactionData.from_proto(resp.item, kin_version=self._kin_version)
 
         raise Error("Unexpected transaction state from Agora: %d", resp.state)
 
@@ -275,10 +302,18 @@ class Client(BaseClient):
             memo = AgoraMemo.new(1, payment.tx_type, self.app_index, fk)
             builder.add_hash_memo(memo.val)
 
+        # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
+        # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
+        # Stellar denomination of 1e-7.
+        #
+        # The Kin amounts provided to `append_payment_op` get converted to the smallest denomination inside the
+        # submitted transaction and the conversion occurs assuming a smallest denomination of 1e-5. Therefore, for
+        # Kin 2 transactions, we must multiple by 100 to account for the scaling factor.
         builder.append_payment_op(
             payment.destination.stellar_address,
-            quarks_to_kin(payment.quarks),
+            quarks_to_kin(payment.quarks * 100 if self._kin_version == 2 else payment.quarks),
             source=payment.sender.public_key.stellar_address,
+            asset_issuer=self._asset_issuer if self._kin_version == 2 else None,
         )
 
         if payment.channel:
@@ -392,10 +427,18 @@ class Client(BaseClient):
             builder.add_hash_memo(memo.val)
 
         for earn in earns:
+            # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
+            # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
+            # Stellar denomination of 1e-7.
+            #
+            # The Kin amounts provided to `append_payment_op` get converted to the smallest denomination inside the
+            # submitted transaction and the conversion occurs assuming a smallest denomination of 1e-5. Therefore, for
+            # Kin 2 transactions, we must multiple by 100 to account for the scaling factor.
             builder.append_payment_op(
                 earn.destination.stellar_address,
-                quarks_to_kin(earn.quarks),
+                quarks_to_kin(earn.quarks * 100 if self._kin_version == 2 else earn.quarks),
                 source=sender.public_key.stellar_address,
+                asset_issuer=self._asset_issuer if self._kin_version == 2 else None,
             )
 
         if channel:

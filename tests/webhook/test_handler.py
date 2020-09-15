@@ -6,6 +6,7 @@ from typing import List
 
 from kin_base import transaction_envelope as te
 
+from agora.client import Environment
 from agora.error import WebhookRequestError, InvoiceErrorReason
 from agora.model import PrivateKey
 from agora.webhook.events import Event
@@ -19,7 +20,7 @@ _TEST_PRIVATE_KEY = PrivateKey.random()
 class TestWebhookHandler:
     def test_is_valid_signature(self):
         secret = 'secret'
-        handler = WebhookHandler(secret=secret)
+        handler = WebhookHandler(Environment.TEST, secret=secret)
 
         req_body = 'somebody'
         sig = base64.b64encode(hmac.new(secret.encode(), req_body.encode(), hashlib.sha256).digest())
@@ -33,7 +34,7 @@ class TestWebhookHandler:
 
     def test_handle_event(self):
         secret = 'secret'
-        handler = WebhookHandler(secret=secret)
+        handler = WebhookHandler(Environment.TEST, secret=secret)
 
         data = [{
             'transaction_event': {
@@ -70,13 +71,13 @@ class TestWebhookHandler:
         assert status_code == 200
 
         # fake signature with no webhook secret should result in a successful response
-        handler = WebhookHandler()
+        handler = WebhookHandler(Environment.TEST)
         status_code, resp_body = handler.handle_events(self._event_return_none, "fakesig", req_body)
         assert status_code == 200
 
     def test_handle_sign_transaction(self):
         secret = 'secret'
-        handler = WebhookHandler(secret=secret)
+        handler = WebhookHandler(Environment.TEST, secret=secret)
 
         acc1 = gen_account_id()
         acc2 = gen_account_id()
@@ -130,7 +131,7 @@ class TestWebhookHandler:
         _TEST_PRIVATE_KEY.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
 
         # fake signature with no webhook secret should result in a successful response
-        handler = WebhookHandler()
+        handler = WebhookHandler(Environment.TEST)
         status_code, resp_body = handler.handle_sign_transaction(self._sign_tx_success, "fakesig", req_body)
         assert status_code == 200
 

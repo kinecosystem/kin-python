@@ -3,7 +3,7 @@ from typing import List, Optional
 from kin_base.stellarxdr import StellarXDR_const as xdr_const, \
     StellarXDR_pack as xdr_pack, StellarXDR_type as xdr_type
 
-from agora.model import PrivateKey
+from agora.model import PrivateKey, PublicKey
 
 
 def gen_account_id() -> xdr_type.AccountID:
@@ -12,6 +12,15 @@ def gen_account_id() -> xdr_type.AccountID:
     return xdr_type.AccountID(
         type=xdr_const.PUBLIC_KEY_TYPE_ED25519,
         ed25519=private_key.public_key.raw,
+    )
+
+
+def gen_account_id_from_address(address: str) -> xdr_type.AccountID:
+    public_key = PublicKey.from_string(address)
+
+    return xdr_type.AccountID(
+        type=xdr_const.PUBLIC_KEY_TYPE_ED25519,
+        ed25519=public_key.raw,
     )
 
 
@@ -93,6 +102,36 @@ def gen_payment_op(
         destination=dest,
         asset=xdr_type.Asset(xdr_const.ASSET_TYPE_NATIVE),
         amount=amount,
+    )
+
+    return xdr_type.Operation(
+        sourceAccount=[src] if src else [],
+        body=body,
+    )
+
+
+def gen_kin_2_payment_op(
+    dest: xdr_type.AccountID, src: Optional[xdr_type.AccountID] = None,
+    raw_amount: int = 1000
+) -> xdr_type.Operation:
+    """Generate a payment operation.
+    """
+    body = xdr_pack.nullclass()
+    body.type = xdr_const.PAYMENT
+
+    alphaNum4 = xdr_pack.nullclass()
+    alphaNum4.assetCode = b'KIN'
+
+    # the test Kin 2 blockchain asset issuer
+    alphaNum4.issuer = gen_account_id_from_address('GBC3SG6NGTSZ2OMH3FFGB7UVRQWILW367U4GSOOF4TFSZONV42UJXUH7')
+
+    body.paymentOp = xdr_type.PaymentOp(
+        destination=dest,
+        asset=xdr_type.Asset(
+            type=xdr_const.ASSET_TYPE_CREDIT_ALPHANUM4,
+            alphaNum4=alphaNum4,
+        ),
+        amount=raw_amount,
     )
 
     return xdr_type.Operation(

@@ -1,7 +1,6 @@
 import base64
 from concurrent import futures
 from typing import List
-import sys
 
 import grpc
 import grpc_testing
@@ -12,7 +11,7 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base import transaction_envelope as te, memo, operation
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
-from agora.client.client import Client, RetryConfig, BaseClient
+from agora.client.client import Client, RetryConfig, BaseClient, _NETWORK_NAMES
 from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBalanceError, \
     DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
@@ -23,10 +22,11 @@ from agora.model.keys import PrivateKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
-from agora.utils import partition, kin_to_quarks, quarks_to_kin, user_agent
+from agora.utils import partition, kin_to_quarks, quarks_to_kin, kin_2_envelope_from_xdr
+from agora.utils import user_agent
 from agora.version import VERSION
-from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, \
-    gen_payment_op_result, gen_result_xdr, gen_hash_memo
+from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, gen_payment_op_result, gen_result_xdr, \
+    gen_hash_memo, gen_kin_2_payment_op
 
 _config_with_retry = RetryConfig(max_retries=2, min_delay=0.1, max_delay=2, max_nonce_refreshes=0)
 _config_with_nonce_retry = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=2)
@@ -87,6 +87,14 @@ def nonce_retry_client(grpc_channel):
     return Client(Environment.TEST, app_index=1, grpc_channel=grpc_channel, retry_config=_config_with_nonce_retry)
 
 
+@pytest.fixture(scope='class')
+def kin_2_client(grpc_channel) -> Client:
+    """Returns an AgoraClient that is configured to use Kin 2.
+    """
+    retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
+    return Client(Environment.TEST, app_index=1, grpc_channel=grpc_channel, retry_config=retry_config, kin_version=2)
+
+
 class TestBaseClient:
     def test_not_implemented(self):
         private_key = PrivateKey.random()
@@ -121,6 +129,10 @@ class TestAgoraClient:
 
     def test_unsupported_version(self, grpc_channel):
         retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
+
+        with pytest.raises(ValueError):
+            Client(Environment.TEST, grpc_channel=grpc_channel, retry_config=retry_config, kin_version=4)
+
         client = Client(Environment.TEST, grpc_channel=grpc_channel, retry_config=retry_config)
         client._kin_version = 4
 
@@ -149,6 +161,20 @@ class TestAgoraClient:
         rpc.terminate(account_pb.CreateAccountResponse(), (), grpc.StatusCode.OK, '')
 
         self._assert_user_agent(md)
+        assert request.account_id.value == private_key.public_key.stellar_address
+        assert not future.result()
+
+    def test_create_account_kin_2(self, grpc_channel, executor, kin_2_client):
+        private_key = PrivateKey.random()
+        future = executor.submit(kin_2_client.create_account, private_key)
+
+        md, request, rpc = grpc_channel.take_unary_unary(
+            account_pb.DESCRIPTOR.services_by_name['Account'].methods_by_name['CreateAccount']
+        )
+
+        rpc.terminate(account_pb.CreateAccountResponse(), (), grpc.StatusCode.OK, '')
+
+        assert md[1] == ('kin-version', '2')
         assert request.account_id.value == private_key.public_key.stellar_address
         assert not future.result()
 
@@ -227,6 +253,65 @@ class TestAgoraClient:
 
         assert request.transaction_hash.value == tx_hash
 
+    def test_get_transaction_kin_2(self, grpc_channel, executor, kin_2_client):
+        tx_hash = b'somehash'
+        future = executor.submit(kin_2_client.get_transaction, tx_hash)
+
+        md, request, rpc = grpc_channel.take_unary_unary(
+            tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
+        )
+
+        # Create full response
+        op_result = gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)
+        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result, op_result])
+
+        il = model_pb2.InvoiceList(invoices=[
+            model_pb2.Invoice(
+                items=[
+                    model_pb2.Invoice.LineItem(title='t1', amount=15),
+                ]
+            ),
+        ])
+        fk = InvoiceList.from_proto(il).get_sha_224_hash()
+        memo = AgoraMemo.new(1, TransactionType.EARN, 1, fk)
+        hash_memo = gen_hash_memo(memo.val)
+
+        acc1 = gen_account_id()
+        acc2 = gen_account_id()
+        operations = [gen_kin_2_payment_op(acc2, raw_amount=1500)]  # equivalent to 15 quarks
+        envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, hash_memo)
+
+        history_item = tx_pb.HistoryItem(
+            hash=model_pb2.TransactionHash(value=tx_hash),
+            result_xdr=result_xdr,
+            envelope_xdr=envelope_xdr,
+            cursor=tx_pb.Cursor(value=b'cursor1'),
+            invoice_list=il,
+        )
+        resp = tx_pb.GetTransactionResponse(
+            state=tx_pb.GetTransactionResponse.State.SUCCESS,
+            ledger=10,
+            item=history_item,
+        )
+        rpc.terminate(resp, (), grpc.StatusCode.OK, '')
+
+        assert md[1] == ('kin-version', '2')
+
+        tx_data = future.result()
+        assert tx_data.tx_hash == tx_hash
+        assert len(tx_data.payments) == 1
+        assert not tx_data.error
+
+        payment1 = tx_data.payments[0]
+        assert payment1.sender.raw == acc1.ed25519
+        assert payment1.destination.raw == acc2.ed25519
+        assert payment1.tx_type == memo.tx_type()
+        assert payment1.quarks == 15
+        assert (payment1.invoice.to_proto().SerializeToString() == il.invoices[0].SerializeToString())
+        assert not payment1.memo
+
+        assert request.transaction_hash.value == tx_hash
+
     def test_get_transaction_unknown(self, grpc_channel, executor, app_index_client):
         tx_hash = b'somehash'
         future = executor.submit(app_index_client.get_transaction, tx_hash)
@@ -259,6 +344,8 @@ class TestAgoraClient:
             )
         )
         req = self._set_get_account_info_response(grpc_channel, resp)
+
+        assert future.result() == 100000
 
         assert req.account_id.value == private_key.public_key.stellar_address
 
@@ -294,6 +381,26 @@ class TestAgoraClient:
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
         self._assert_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
+        assert len(submit_req.invoice_list.invoices) == 0
+
+    def test_submit_payment_kin_2(self, grpc_channel, executor, kin_2_client):
+        sender = PrivateKey.random()
+        dest = PrivateKey.random().public_key
+        payment = Payment(sender, dest, TransactionType.EARN, 100000)
+
+        future = executor.submit(kin_2_client.submit_payment, payment)
+
+        account_req = self._set_successful_get_account_info_response(grpc_channel, sender, 10)
+
+        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
+        submit_req = self._set_successful_submit_transaction_response(grpc_channel, b'somehash', result_xdr)
+
+        assert future.result() == b'somehash'
+
+        assert account_req.account_id.value == sender.public_key.stellar_address
+
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_kin_2_payment_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, payment)
         assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_payment_with_channel(self, grpc_channel, executor, app_index_client):
@@ -574,6 +681,39 @@ class TestAgoraClient:
             expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
             self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, starting_seq + idx + 1,
                                              expected_memo, sender, earn_batches[idx])
+            assert len(submit_req.invoice_list.invoices) == 0
+
+    def test_submit_earn_batch_multiple_kin_2(self, grpc_channel, executor, kin_2_client):
+        sender = PrivateKey.random()
+        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(250)]
+
+        future = executor.submit(kin_2_client.submit_earn_batch, sender, all_earns)
+
+        account_reqs = []
+        submit_reqs = []
+        tx_hashes = []
+        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
+        starting_seq = 10
+
+        for i in range(3):
+            account_reqs.append(self._set_successful_get_account_info_response(grpc_channel, sender, starting_seq + i))
+            tx_hash = 'somehash{}'.format(i).encode()
+            submit_reqs.append(self._set_successful_submit_transaction_response(grpc_channel, tx_hash, result_xdr))
+            tx_hashes.append(tx_hash)
+
+        batch_earn_result = future.result()
+        assert len(batch_earn_result.succeeded) == 250
+        assert len(batch_earn_result.failed) == 0
+
+        for account_req in account_reqs:
+            assert account_req.account_id.value == sender.public_key.stellar_address
+
+        earn_batches = partition(all_earns, 100)
+        for idx, submit_req in enumerate(submit_reqs):
+            expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+            self._assert_kin_2_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100,
+                                                   starting_seq + idx + 1,
+                                                   expected_memo, sender, earn_batches[idx])
             assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_earn_batch_same_dest(self, grpc_channel, executor, app_index_client):
@@ -969,7 +1109,7 @@ class TestAgoraClient:
 
     @staticmethod
     def _set_successful_get_account_info_response(
-        channel: grpc_testing.Channel, pk: PrivateKey, sequence: int, balance: int = kin_to_quarks("1000")
+        channel: grpc_testing.Channel, pk: PrivateKey, sequence: int, balance: int = kin_to_quarks("1000"),
     ) -> account_pb.GetAccountInfoRequest:
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.OK,
@@ -1058,6 +1198,56 @@ class TestAgoraClient:
 
     @staticmethod
     def _assert_user_agent(md):
-        assert len(md) == 2
+        assert len(md) >= 2
         assert len(md[0]) == 2
         assert md[0] == user_agent(VERSION)
+
+    @staticmethod
+    def _assert_kin_2_payment_envelope(
+        envelope_xdr: bytes, signers: List[PrivateKey], tx_source: PrivateKey, base_fee: int, sequence: int,
+        tx_memo: memo.Memo, payment: Payment
+    ):
+        envelope = kin_2_envelope_from_xdr(_NETWORK_NAMES[2][Environment.TEST], base64.b64encode(envelope_xdr))
+        operations = envelope.tx.operations
+
+        TestAgoraClient._assert_envelope_properties(envelope, signers, tx_source, base_fee, sequence, tx_memo)
+
+        for idx, op in enumerate(operations):
+            assert isinstance(op, operation.Payment)
+            assert op.source == payment.sender.public_key.stellar_address
+            assert op.destination == payment.destination.stellar_address
+
+            # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
+            # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
+            # Stellar denomination of 1e-7.
+            #
+            # When parsing an XDR transaction, which contains amounts in the smallest denomination of the currency,
+            # `kin_base` assumes a smallest denomination of 1e-5. Therefore, for Kin 2 transactions, we must multiply
+            # what we expect the amount to be by 100 to account for the 100x scaling factor.
+            assert op.amount == quarks_to_kin(payment.quarks * 100)
+
+    @staticmethod
+    def _assert_kin_2_earn_batch_envelope(
+        envelope_xdr: bytes, signers: List[PrivateKey], tx_source: PrivateKey,
+        base_fee: int, sequence: int, tx_memo: memo.Memo, sender: PrivateKey, earns: List[Earn]
+    ):
+        envelope = kin_2_envelope_from_xdr(_NETWORK_NAMES[2][Environment.TEST], base64.b64encode(envelope_xdr))
+        operations = envelope.tx.operations
+
+        TestAgoraClient._assert_envelope_properties(envelope, signers, tx_source, base_fee * len(operations), sequence,
+                                                    tx_memo)
+        assert len(operations) == len(earns)
+        for idx, op in enumerate(operations):
+            earn = earns[idx]
+            assert isinstance(op, operation.Payment)
+            assert op.source == sender.public_key.stellar_address
+            assert op.destination == earn.destination.stellar_address
+
+            # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
+            # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
+            # Stellar denomination of 1e-7.
+            #
+            # When parsing an XDR transaction, which contains amounts in the smallest denomination of the currency,
+            # `kin_base` assumes a smallest denomination of 1e-5. Therefore, for Kin 2 transactions, we must multiply
+            # what we expect the amount to be by 100 to account for the 100x scaling factor.
+            assert op.amount == quarks_to_kin(earn.quarks * 100)

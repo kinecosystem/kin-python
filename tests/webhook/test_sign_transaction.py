@@ -4,11 +4,12 @@ import pytest
 from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te
 
+from agora.client import Environment
 from agora.error import InvoiceErrorReason
 from agora.model import PrivateKey
 from agora.model.invoice import Invoice
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
-from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo
+from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_kin_2_payment_op
 
 
 class TestSignTransactionRequest:
@@ -19,7 +20,20 @@ class TestSignTransactionRequest:
             'envelope_xdr': envelope.xdr(),
         }
 
-        req = SignTransactionRequest.from_json(data)
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
+        assert len(req.payments) == 1
+
+        assert req.kin_version == data['kin_version']
+        assert req.envelope.xdr() == envelope.xdr()
+
+    def test_from_json_kin_2(self):
+        envelope = _generate_kin_2_envelope()
+        data = {
+            'kin_version': 2,
+            'envelope_xdr': envelope.xdr(),
+        }
+
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
         assert len(req.payments) == 1
 
         assert req.kin_version == data['kin_version']
@@ -43,7 +57,7 @@ class TestSignTransactionRequest:
             'invoice_list': base64.b64encode(il.SerializeToString()),
         }
 
-        req = SignTransactionRequest.from_json(data)
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
         assert len(req.payments) == 1
         assert req.payments[0].invoice == Invoice.from_proto(il.invoices[0])
 
@@ -53,11 +67,11 @@ class TestSignTransactionRequest:
     def test_from_json_invalid(self):
         # missing kin_version
         with pytest.raises(ValueError):
-            SignTransactionRequest.from_json({'envelope_xdr': 'envelopexdr'})
+            SignTransactionRequest.from_json({'envelope_xdr': 'envelopexdr'}, Environment.TEST)
 
         # missing envelope_xdr
         with pytest.raises(ValueError):
-            SignTransactionRequest.from_json({'kin_version': 3})
+            SignTransactionRequest.from_json({'kin_version': 3}, Environment.TEST)
 
 
 class TestSignTransactionResponse:
@@ -114,6 +128,15 @@ def _generate_envelope():
     acc1 = gen_account_id()
     acc2 = gen_account_id()
     operations = [gen_payment_op(acc2)]
+    envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations,
+                                       gen_text_memo(b'somememo'))
+    return te.TransactionEnvelope.from_xdr(base64.b64encode(envelope_xdr))
+
+
+def _generate_kin_2_envelope():
+    acc1 = gen_account_id()
+    acc2 = gen_account_id()
+    operations = [gen_kin_2_payment_op(acc2)]
     envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations,
                                        gen_text_memo(b'somememo'))
     return te.TransactionEnvelope.from_xdr(base64.b64encode(envelope_xdr))
