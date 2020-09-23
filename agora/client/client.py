@@ -100,7 +100,7 @@ class BaseClient:
     def create_account(self, private_key: PrivateKey):
         """Creates a new Kin account.
 
-        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account to create
+        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to create
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountExistsError <agora.error.AccountExistsError>`
         """
@@ -117,7 +117,7 @@ class BaseClient:
     def get_balance(self, public_key: PublicKey) -> int:
         """Retrieves the balance of an account.
 
-        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to retrieve the balance for.
+        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to retrieve the balance for.
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountNotFoundError <agora.error.AccountNotFoundError>`
         :return: The balance of the account, in quarks.
@@ -149,9 +149,9 @@ class BaseClient:
     ) -> BatchEarnResult:
         """Submit multiple earn payments.
 
-        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the sender
+        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of a channel account to use as
+        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of a channel account to use as
             the transaction source. If not set, the `sender` will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
@@ -184,7 +184,7 @@ class Client(BaseClient):
     :param env: The :class:`Environment <agora.environment.Environment>` to use.
     :param app_index: (optional) The Agora index of the app, used for all transactions and requests. Required to make
         use of invoices.
-    :param whitelist_key: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account to whitelist
+    :param whitelist_key: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to whitelist
         submitted transactions with.
     :param grpc_channel: (optional) A GRPC :class:`Channel <grpc.Channel>` object to use for Agora requests. Only one of
         grpc_channel or endpoint should be set.
@@ -392,9 +392,9 @@ class Client(BaseClient):
         """ Submits a single transaction for a batch of earns. An error will be raised if the number of earns exceeds
         the capacity of a single transaction.
 
-        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the sender
+        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey` of the channel account to use
+        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the channel account to use
             as the transaction source. If not set, the sender will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
@@ -474,7 +474,7 @@ class Client(BaseClient):
     def _create_stellar_account(self, private_key: PrivateKey):
         """Submits a request to Agora to create a Stellar account.
 
-        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey` of the account to create.
+        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to create.
         """
         resp = self.account_stub.CreateAccount(account_pb.CreateAccountRequest(
             account_id=model_pb2.StellarAccountId(
@@ -487,7 +487,7 @@ class Client(BaseClient):
     def _get_stellar_account_info(self, public_key: PublicKey) -> account_pb.AccountInfo:
         """Requests account info from Agora for a Stellar account.
 
-        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey` of the account to request the info for.
+        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to request the info for.
         :return: :class:`StellarAccountInfo <agora.client.stellar.account.AccountInfo>
         """
         resp = self.account_stub.GetAccountInfo(account_pb.GetAccountInfoRequest(

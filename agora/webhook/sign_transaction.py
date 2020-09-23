@@ -85,7 +85,7 @@ class SignTransactionResponse:
     def sign(self, private_key: PrivateKey):
         """Signs the transaction envelope with the provided account private key.
 
-        :param private_key: The account :class:`PrivateKey <agora.model.keys.PrivateKey`
+        :param private_key: The account :class:`PrivateKey <agora.model.keys.PrivateKey>`
         """
         kp = kin_base.Keypair.from_raw_seed(private_key.raw)
         self.envelope.sign(kp)
