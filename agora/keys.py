@@ -3,8 +3,8 @@ import os
 from kin_base import utils as kin_utils
 from nacl import signing
 
-_ED25519_PUB_KEY_SIZE = 32
-_ED25519_PRIV_KEY_SIZE = 64
+ED25519_PUB_KEY_SIZE = 32
+ED25519_PRIV_KEY_SIZE = 64
 
 
 class PublicKey:
@@ -56,6 +56,13 @@ class PublicKey:
         :return: bytes
         """
         return bytes(self._verify_key)
+
+    def verify(self, data: bytes, signature: bytes):
+        """Verify the provided data and signature match this keypair's public key.
+        :param data: The data that was signed.
+        :param signature: The signature.
+        """
+        return self._verify_key.verify(data, signature)
 
 
 class PrivateKey:
@@ -124,9 +131,10 @@ class PrivateKey:
         """
         return PublicKey(bytes(self._signing_key.verify_key))
 
-    def verify(self, data: bytes, signature: bytes):
-        """Verify the provided data and signature match this keypair's public key.
-        :param data: The data that was signed.
-        :param signature: The signature.
+    def sign(self, data: bytes) -> bytes:
+        """Sign the provided data.
+
+        :param data: The data to sign.
+        :return: The signature.
         """
-        return self._signing_key.verify_key.verify(data, signature)
+        return self._signing_key.sign(data).signature

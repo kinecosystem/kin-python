@@ -3,7 +3,8 @@ from typing import Optional, List
 from agoraapi.common.v3 import model_pb2 as model_pb
 
 from agora.error import TransactionErrors
-from agora.model import PrivateKey, TransactionData, AccountInfo, InvoiceList, PublicKey
+from agora.keys import PrivateKey, PublicKey
+from agora.model import TransactionData, AccountInfo, InvoiceList
 
 _GRPC_TIMEOUT_SECONDS = 10
 

@@ -1,7 +1,7 @@
 import pytest
 from kin_base import Keypair
 
-from agora.model.keys import PublicKey, PrivateKey
+from agora.keys import PublicKey, PrivateKey
 
 
 class TestKeys:

@@ -5,7 +5,7 @@ from typing import List
 from flask import Flask, request
 
 from agora.error import InvoiceErrorReason
-from agora.model import PrivateKey
+from agora.keys import PrivateKey
 from agora.webhook.events import Event
 from agora.webhook.handler import WebhookHandler, AGORA_HMAC_HEADER, APP_USER_ID_HEADER, APP_USER_PASSKEY_HEADER
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse

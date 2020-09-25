@@ -47,7 +47,7 @@ The `create_account` method creates an account with the provided private key.
 
 To create a new account, first generate a new private key:
 ```python
-from agora.model import PrivateKey
+from agora.keys import PrivateKey
 
 private_key = PrivateKey.random()
 ```
@@ -67,7 +67,7 @@ transaction_data = client.get_transaction(tx_hash)
 #### Get an Account Balance
 The `get_balance` method gets the balance of the provided account, in [quarks](https://docs.kin.org/terms-and-concepts#quark).
 ```python
-from agora.model import PrivateKey
+from agora.keys import PrivateKey
 from agora.client import Client, Environment
 
 client = Client(Environment.TEST, app_index=1)

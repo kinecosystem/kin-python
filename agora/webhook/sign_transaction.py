@@ -9,7 +9,7 @@ from agora import KIN_2_PROD_NETWORK, KIN_2_TEST_NETWORK
 from agora.client import Environment
 from agora.error import InvoiceErrorReason, OperationInvoiceError
 from agora.model.invoice import InvoiceList
-from agora.model.keys import PrivateKey
+from agora.keys import PrivateKey
 from agora.model.payment import ReadOnlyPayment
 from agora.utils import kin_2_envelope_from_xdr
 

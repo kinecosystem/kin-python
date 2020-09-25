@@ -14,7 +14,7 @@ from agora.error import AccountExistsError, InvoiceError, InvoiceErrorReason, \
     WrongDestinationError, SkuNotFoundError
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
-from agora.model.keys import PrivateKey, PublicKey
+from agora.keys import PrivateKey, PublicKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.result import BatchEarnResult, EarnResult

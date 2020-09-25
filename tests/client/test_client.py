@@ -18,7 +18,7 @@ from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBa
     TransactionRejectedError, TransactionNotFoundError, Error, AlreadyPaidError
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList, Invoice, LineItem
-from agora.model.keys import PrivateKey
+from agora.keys import PrivateKey
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction_type import TransactionType
@@ -1188,7 +1188,7 @@ class TestAgoraClient:
     ):
         assert len(envelope.signatures) == len(signers)
         for idx, signer in enumerate(signers):
-            signer.verify(envelope.hash_meta(), envelope.signatures[idx].signature)
+            signer.public_key.verify(envelope.hash_meta(), envelope.signatures[idx].signature)
 
         tx = envelope.tx
         assert tx.source.decode() == tx_source.public_key.stellar_address

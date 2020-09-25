@@ -2,7 +2,8 @@ import argparse
 
 from agora.client import Client, RetryConfig, Environment
 from agora.error import Error, TransactionErrors
-from agora.model import Invoice, LineItem, Payment, TransactionType, PrivateKey, PublicKey
+from agora.keys import PrivateKey, PublicKey
+from agora.model import Invoice, LineItem, Payment, TransactionType
 from agora.utils import kin_to_quarks
 
 

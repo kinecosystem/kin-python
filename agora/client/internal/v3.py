@@ -8,7 +8,8 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb, transactio
 from agora.client.internal.internal import InternalClient, SubmitTransactionResult
 from agora.error import TransactionErrors, AccountExistsError, AccountNotFoundError, \
     TransactionNotFoundError, Error, TransactionRejectedError
-from agora.model import PrivateKey, TransactionData, AccountInfo, InvoiceList, PublicKey
+from agora.keys import PrivateKey, PublicKey
+from agora.model import TransactionData, AccountInfo, InvoiceList
 from agora.retry import Strategy, retry
 from agora.utils import user_agent
 from agora.version import VERSION

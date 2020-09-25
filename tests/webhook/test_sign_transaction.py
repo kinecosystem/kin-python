@@ -6,7 +6,7 @@ from kin_base import transaction_envelope as te
 
 from agora.client import Environment
 from agora.error import InvoiceErrorReason
-from agora.model import PrivateKey
+from agora.keys import PrivateKey
 from agora.model.invoice import Invoice
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_kin_2_payment_op
@@ -82,7 +82,7 @@ class TestSignTransactionResponse:
         resp.sign(private_key)
 
         # kp.verify throws an error if the signature doesn't match
-        private_key.verify(resp.envelope.hash_meta(), resp.envelope.signatures[-1].signature)
+        private_key.public_key.verify(resp.envelope.hash_meta(), resp.envelope.signatures[-1].signature)
 
     def test_reject(self):
         resp = SignTransactionResponse(_generate_envelope())

@@ -1,7 +1,8 @@
 import argparse
 
 from agora.client import Client, RetryConfig, Environment
-from agora.model import Earn, Invoice, LineItem, PrivateKey, PublicKey
+from agora.keys import  PrivateKey, PublicKey
+from agora.model import Earn, Invoice, LineItem
 from agora.utils import kin_to_quarks
 
 ap = argparse.ArgumentParser()

@@ -3,7 +3,11 @@ from typing import List, Optional
 from kin_base.stellarxdr import StellarXDR_const as xdr_const, \
     StellarXDR_pack as xdr_pack, StellarXDR_type as xdr_type
 
-from agora.model import PrivateKey, PublicKey
+from agora.keys import PrivateKey, PublicKey
+
+
+def generate_keys(amount) -> List[PrivateKey]:
+    return [PrivateKey.random() for _ in range(amount)]
 
 
 def gen_account_id() -> xdr_type.AccountID:

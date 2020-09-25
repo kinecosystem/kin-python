@@ -2,7 +2,7 @@ import argparse
 
 from agora.client import Client, RetryConfig, Environment
 from agora.error import AccountExistsError
-from agora.model import PrivateKey
+from agora.keys import PrivateKey
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-s", "--seed", required=True, help="The private seed of the account to create")

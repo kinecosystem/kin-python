@@ -1,7 +1,7 @@
 from typing import Optional
 
 from agora.model.invoice import Invoice
-from agora.model.keys import PublicKey
+from agora.keys import PublicKey
 
 
 class Earn:

@@ -4,7 +4,7 @@ from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te, operation, memo
 
 from agora.model.invoice import Invoice
-from agora.model.keys import PrivateKey, PublicKey
+from agora.keys import PrivateKey, PublicKey
 from agora.model.memo import AgoraMemo
 from agora.model.transaction_type import TransactionType
 from agora.utils import kin_to_quarks
