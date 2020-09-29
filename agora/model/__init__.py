@@ -1,3 +1,4 @@
+from .account import AccountInfo
 from .earn import Earn
 from .invoice import LineItem, Invoice, InvoiceList
 from .keys import PublicKey, PrivateKey
@@ -8,6 +9,7 @@ from .transaction import TransactionData
 from .transaction_type import TransactionType
 
 __all__ = [
+    'AccountInfo',
     'Earn',
     'LineItem',
     'Invoice',

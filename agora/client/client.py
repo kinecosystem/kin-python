@@ -3,16 +3,14 @@ from typing import List, Optional
 
 import grpc
 import kin_base
-from agoraapi.account.v3 import account_service_pb2 as account_pb, account_service_pb2_grpc as account_pb_grpc
-from agoraapi.common.v3 import model_pb2
-from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb, transaction_service_pb2_grpc as tx_pb_grpc
 
 from agora import KIN_2_PROD_NETWORK, KIN_2_TEST_NETWORK
 from agora.client.environment import Environment
-from agora.error import AccountExistsError, AccountNotFoundError, InvoiceError, InvoiceErrorReason, \
+from agora.client.internal import V3InternalClient, SubmitTransactionResult
+from agora.error import AccountExistsError, InvoiceError, InvoiceErrorReason, \
     UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
     DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
-    TransactionRejectedError, TransactionErrors, TransactionNotFound, Error, AlreadyPaidError, \
+    TransactionRejectedError, Error, AlreadyPaidError, \
     WrongDestinationError, SkuNotFoundError
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList
@@ -24,8 +22,7 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy
-from agora.utils import partition, quarks_to_kin, user_agent
-from agora.version import VERSION
+from agora.utils import partition, quarks_to_kin
 
 _SUPPORTED_VERSIONS = [2, 3]
 
@@ -104,7 +101,7 @@ class BaseClient:
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountExistsError <agora.error.AccountExistsError>`
         """
-        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement create_account")
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement create_account')
 
     def get_transaction(self, tx_hash: bytes) -> TransactionData:
         """Retrieves a transaction.
@@ -112,7 +109,7 @@ class BaseClient:
         :param tx_hash: The hash of the transaction to retrieve
         :return: a :class:`TransactionData <agora.model.transaction.TransactionData>` object.
         """
-        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement get_transaction")
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement get_transaction')
 
     def get_balance(self, public_key: PublicKey) -> int:
         """Retrieves the balance of an account.
@@ -122,7 +119,7 @@ class BaseClient:
         :raise: :exc:`AccountNotFoundError <agora.error.AccountNotFoundError>`
         :return: The balance of the account, in quarks.
         """
-        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement get_balance")
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement get_balance')
 
     def submit_payment(self, payment: Payment) -> bytes:
         """Submits a payment to the Kin blockchain.
@@ -142,7 +139,7 @@ class BaseClient:
 
         :return: The hash of the transaction.
         """
-        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_payment")
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement submit_payment')
 
     def submit_earn_batch(
         self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None
@@ -160,22 +157,13 @@ class BaseClient:
 
         :return: a :class:`BatchEarnResult <agora.model.result.BatchEarnResult>`
         """
-        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement submit_earn_batch")
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement submit_earn_batch')
 
     def close(self) -> None:
         """Closes the connection-related resources (e.g. the gRPC channel) used by the client. Subsequent requests to
         this client will cause an exception to be thrown.
         """
-        raise NotImplementedError("BaseClient is an abstract class. Subclasses must implement close")
-
-
-class SubmitStellarTransactionResult:
-    def __init__(self, tx_hash: Optional[bytes] = None,
-                 invoice_errors: Optional[List[tx_pb.SubmitTransactionResponse.InvoiceError]] = None,
-                 tx_error: Optional[TransactionErrors] = None):
-        self.tx_hash = tx_hash if tx_hash else bytes(32)
-        self.invoice_errors = invoice_errors if invoice_errors else []
-        self.tx_error = tx_error
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement close')
 
 
 class Client(BaseClient):
@@ -201,74 +189,56 @@ class Client(BaseClient):
         retry_config: Optional[RetryConfig] = None, kin_version: Optional[int] = 3,
     ):
         if kin_version not in _SUPPORTED_VERSIONS:
-            raise ValueError("{} is not a supported version of Kin".format(kin_version))
+            raise ValueError(f'{kin_version} is not a supported version of Kin')
 
         self.network_name = _NETWORK_NAMES[kin_version][env]
         self.app_index = app_index
+        self.whitelist_key = whitelist_key
 
         if grpc_channel and endpoint:
-            raise ValueError("grpc_channel and endpoint cannot both be set")
+            raise ValueError('`grpc_channel` and `endpoint` cannot both be set')
 
         if not grpc_channel:
             endpoint = endpoint if endpoint else _ENDPOINTS[env]
             ssl_credentials = grpc.ssl_channel_credentials()
-            self.grpc_channel = grpc.secure_channel(endpoint, ssl_credentials)
+            self._grpc_channel = grpc.secure_channel(endpoint, ssl_credentials)
         else:
-            self.grpc_channel = grpc_channel
+            self._grpc_channel = grpc_channel
 
-        self.account_stub = account_pb_grpc.AccountStub(self.grpc_channel)
-        self.transaction_stub = tx_pb_grpc.TransactionStub(self.grpc_channel)
-
-        self.whitelist_key = whitelist_key
-
-        self.retry_config = retry_config if retry_config else RetryConfig()
-        self.retry_strategies = [
+        retry_config = retry_config if retry_config else RetryConfig()
+        internal_retry_strategies = [
             NonRetriableErrorsStrategy(_NON_RETRIABLE_ERRORS),
-            LimitStrategy(self.retry_config.max_retries + 1),
-            BackoffWithJitterStrategy(BinaryExponentialBackoff(self.retry_config.min_delay),
-                                      self.retry_config.max_delay, 0.1),
+            LimitStrategy(retry_config.max_retries + 1),
+            BackoffWithJitterStrategy(BinaryExponentialBackoff(retry_config.min_delay),
+                                      retry_config.max_delay, 0.1),
         ]
-        self.nonce_retry_strategies = [
+        self._nonce_retry_strategies = [
             RetriableErrorsStrategy([BadNonceError]),
-            LimitStrategy(self.retry_config.max_nonce_refreshes + 1)
+            LimitStrategy(retry_config.max_nonce_refreshes + 1)
         ]
 
         self._kin_version = kin_version
         if kin_version == 2:
             self._asset_issuer = _KIN_2_ISSUERS[env]
-            self._metadata = (
-                user_agent(VERSION),
-                ('kin-version', str(self._kin_version)),
-            )
         else:
             self._asset_issuer = None
-            self._metadata = (user_agent(VERSION),)
+
+        self._internal_client = V3InternalClient(self._grpc_channel, internal_retry_strategies, self._kin_version)
 
     def create_account(self, private_key: PrivateKey):
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError()
 
-        retry(self.retry_strategies, self._create_stellar_account, private_key=private_key)
+        self._internal_client.create_account(private_key)
 
     def get_transaction(self, tx_hash: bytes) -> TransactionData:
-        resp = self.transaction_stub.GetTransaction(tx_pb.GetTransactionRequest(
-            transaction_hash=model_pb2.TransactionHash(
-                value=tx_hash
-            )
-        ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-
-        if resp.state is tx_pb.GetTransactionResponse.State.UNKNOWN:
-            raise TransactionNotFound()
-        if resp.state == tx_pb.GetTransactionResponse.State.SUCCESS:
-            return TransactionData.from_proto(resp.item, kin_version=self._kin_version)
-
-        raise Error("Unexpected transaction state from Agora: %d", resp.state)
+        return self._internal_client.get_transaction(tx_hash)
 
     def get_balance(self, public_key: PublicKey) -> int:
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError()
 
-        info = self._get_stellar_account_info(public_key)
+        info = self._internal_client.get_account_info(public_key)
         return info.balance
 
     def submit_payment(self, payment: Payment) -> bytes:
@@ -317,8 +287,8 @@ class Client(BaseClient):
         if result.tx_error:
             if len(result.tx_error.op_errors) > 0:
                 if len(result.tx_error.op_errors) != 1:
-                    raise Error("invalid number of operation errors, expected 0 or 1, got {}"
-                                .format(len(result.tx_error.op_errors)))
+                    raise Error(f'invalid number of operation errors, expected 0 or 1, got '
+                                f'{len(result.tx_error.op_errors)}')
                 raise result.tx_error.op_errors[0]
 
             if result.tx_error.tx_error:
@@ -326,8 +296,7 @@ class Client(BaseClient):
 
         if result.invoice_errors:
             if len(result.invoice_errors) != 1:
-                raise Error("invalid number of invoice errors, expected 0 or 1, got {}"
-                            .format(len(result.invoice_errors)))
+                raise Error(f'invalid number of invoice errors, expected 0 or 1, got {len(result.invoice_errors)}')
 
             if result.invoice_errors[0].reason == InvoiceErrorReason.ALREADY_PAID:
                 raise AlreadyPaidError()
@@ -335,7 +304,7 @@ class Client(BaseClient):
                 raise WrongDestinationError()
             if result.invoice_errors[0].reason == InvoiceErrorReason.SKU_NOT_FOUND:
                 raise SkuNotFoundError()
-            raise Error("unknown invoice error: {}".format(result.invoice_errors[0].reason))
+            raise Error(f'unknown invoice error: {result.invoice_errors[0].reason}')
 
         return result.tx_hash
 
@@ -348,11 +317,11 @@ class Client(BaseClient):
         invoices = [earn.invoice for earn in earns if earn.invoice]
         if invoices:
             if self.app_index <= 0:
-                raise ValueError("cannot submit a payment with an invoice without an app index")
+                raise ValueError('cannot submit a payment with an invoice without an app index')
             if len(invoices) != len(earns):
-                raise ValueError("Either all or none of the earns must contain invoices")
+                raise ValueError('Either all or none of the earns must contain invoices')
             if memo:
-                raise ValueError("Cannot use both text memo and invoices")
+                raise ValueError('Cannot use both text memo and invoices')
 
         succeeded = []
         failed = []
@@ -384,11 +353,11 @@ class Client(BaseClient):
         return BatchEarnResult(succeeded=succeeded, failed=failed)
 
     def close(self) -> None:
-        self.grpc_channel.close()
+        self._grpc_channel.close()
 
     def _submit_earn_batch_tx(
         self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None
-    ) -> SubmitStellarTransactionResult:
+    ) -> SubmitTransactionResult:
         """ Submits a single transaction for a batch of earns. An error will be raised if the number of earns exceeds
         the capacity of a single transaction.
 
@@ -402,7 +371,7 @@ class Client(BaseClient):
         :return: a list of :class:`BatchEarnResult <agora.model.result.EarnResult>` objects
         """
         if len(earns) > 100:
-            raise ValueError("cannot send more than 100 earns")
+            raise ValueError('cannot send more than 100 earns')
 
         builder = self._get_stellar_builder(channel if channel else sender)
 
@@ -441,14 +410,14 @@ class Client(BaseClient):
         result = self._sign_and_submit_builder(signers, builder, invoice_list)
         if result.invoice_errors:
             # Invoice errors should not be triggered on earns. This indicates there is something wrong with the service.
-            raise Error("unexpected invoice errors present")
+            raise Error('unexpected invoice errors present')
 
         return result
 
     def _sign_and_submit_builder(
         self, signers: List[PrivateKey], builder: kin_base.Builder, invoice_list: Optional[InvoiceList] = None
-    ) -> SubmitStellarTransactionResult:
-        source_info = self._get_stellar_account_info(signers[0].public_key)
+    ) -> SubmitTransactionResult:
+        source_info = self._internal_client.get_account_info(signers[0].public_key)
         offset = 1
 
         def _sign_and_submit():
@@ -462,43 +431,14 @@ class Client(BaseClient):
             for signer in signers:
                 builder.sign(signer.stellar_seed)
 
-            result = self._submit_stellar_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
+            result = self._internal_client.submit_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
             if result.tx_error and isinstance(result.tx_error.tx_error, BadNonceError):
                 offset += 1
                 raise result.tx_error.tx_error
 
             return result
 
-        return retry(self.nonce_retry_strategies, _sign_and_submit)
-
-    def _create_stellar_account(self, private_key: PrivateKey):
-        """Submits a request to Agora to create a Stellar account.
-
-        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to create.
-        """
-        resp = self.account_stub.CreateAccount(account_pb.CreateAccountRequest(
-            account_id=model_pb2.StellarAccountId(
-                value=private_key.public_key.stellar_address
-            ),
-        ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-        if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
-            raise AccountExistsError()
-
-    def _get_stellar_account_info(self, public_key: PublicKey) -> account_pb.AccountInfo:
-        """Requests account info from Agora for a Stellar account.
-
-        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to request the info for.
-        :return: :class:`StellarAccountInfo <agora.client.stellar.account.AccountInfo>
-        """
-        resp = self.account_stub.GetAccountInfo(account_pb.GetAccountInfoRequest(
-            account_id=model_pb2.StellarAccountId(
-                value=public_key.stellar_address
-            ),
-        ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-        if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
-            raise AccountNotFoundError
-
-        return resp.account_info
+        return retry(self._nonce_retry_strategies, _sign_and_submit)
 
     def _get_stellar_builder(self, source: PrivateKey) -> kin_base.Builder:
         """Returns a Stellar transaction builder.
@@ -511,39 +451,3 @@ class Client(BaseClient):
         return kin_base.Builder(None, self.network_name,
                                 100,
                                 source.stellar_seed)
-
-    def _submit_stellar_transaction(
-        self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None
-    ) -> SubmitStellarTransactionResult:
-        """Submit a stellar transaction to Agora.
-        :param tx_bytes: The transaction envelope xdr, in bytes
-        :param invoice_list: (optional) An :class:`InvoiceList <agora.model.invoice.InvoiceList>` to associate with the
-            transaction
-        :raise: :exc:`TransactionRejectedError <agora.error.TransactionRejectedError>`: if the transaction was rejected
-            by the configured app's webhook
-        :raise: :exc:`InvoiceError <agora.error.InvoiceError>`: if the transaction failed for a invoice-related reason.
-        :raise: :exc:`TransactionError <agora.error.TransactionError>`: if the transaction failed upon submission to the
-            blockchain.
-        :return: The transaction hash
-        """
-
-        def _submit():
-            req = tx_pb.SubmitTransactionRequest(
-                envelope_xdr=tx_bytes,
-                invoice_list=invoice_list.to_proto() if invoice_list else None,
-            )
-            resp = self.transaction_stub.SubmitTransaction(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-
-            result = SubmitStellarTransactionResult(tx_hash=resp.hash.value)
-            if resp.result == tx_pb.SubmitTransactionResponse.Result.REJECTED:
-                raise TransactionRejectedError()
-            elif resp.result == tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR:
-                result.invoice_errors = resp.invoice_errors
-            elif resp.result == tx_pb.SubmitTransactionResponse.Result.FAILED:
-                result.tx_error = TransactionErrors.from_result(resp.result_xdr)
-            elif resp.result != tx_pb.SubmitTransactionResponse.Result.OK:
-                raise Error("unexpected result from agora: {}".format(resp.result))
-
-            return result
-
-        return retry(self.retry_strategies, _submit)

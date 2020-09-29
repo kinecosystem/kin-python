@@ -1,7 +1,7 @@
 from enum import IntEnum
 from typing import List, Optional
 
-from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
+from agoraapi.common.v3 import model_pb2 as model_pb
 from kin_base import stellarxdr
 from kin_base.stellarxdr import StellarXDR_const
 
@@ -47,7 +47,7 @@ class TransactionMalformedError(Error):
     """
 
 
-class TransactionNotFound(Error):
+class TransactionNotFoundError(Error):
     """Raised when no transaction data for a specified transaction could be found.
     """
 
@@ -94,15 +94,15 @@ class InvoiceErrorReason(IntEnum):
 
     @classmethod
     def from_proto(
-        cls, proto: tx_pb.SubmitTransactionResponse.InvoiceError.Reason
+        cls, proto: model_pb.InvoiceError.Reason
     ) -> 'InvoiceErrorReason':
-        if proto == tx_pb.SubmitTransactionResponse.InvoiceError.Reason.ALREADY_PAID:
+        if proto == model_pb.InvoiceError.Reason.ALREADY_PAID:
             return cls.ALREADY_PAID
 
-        if proto == tx_pb.SubmitTransactionResponse.InvoiceError.Reason.WRONG_DESTINATION:
+        if proto == model_pb.InvoiceError.Reason.WRONG_DESTINATION:
             return cls.WRONG_DESTINATION
 
-        if proto == tx_pb.SubmitTransactionResponse.InvoiceError.Reason.SKU_NOT_FOUND:
+        if proto == model_pb.InvoiceError.Reason.SKU_NOT_FOUND:
             return cls.SKU_NOT_FOUND
 
         return cls.UNKNOWN

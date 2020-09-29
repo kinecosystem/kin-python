@@ -1,5 +1,5 @@
 import pytest
-from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
+from agoraapi.common.v3 import model_pb2 as model_pb
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
 from agora.error import AccountExistsError, BadNonceError, DestinationDoesNotExistError, InsufficientBalanceError, \
@@ -12,11 +12,11 @@ class TestExceptions:
     @pytest.mark.parametrize(
         "proto_invoice_reason, expected",
         [
-            (tx_pb.SubmitTransactionResponse.InvoiceError.Reason.ALREADY_PAID,
+            (model_pb.InvoiceError.Reason.ALREADY_PAID,
              InvoiceErrorReason.ALREADY_PAID),
-            (tx_pb.SubmitTransactionResponse.InvoiceError.Reason.WRONG_DESTINATION,
+            (model_pb.InvoiceError.Reason.WRONG_DESTINATION,
              InvoiceErrorReason.WRONG_DESTINATION),
-            (tx_pb.SubmitTransactionResponse.InvoiceError.Reason.SKU_NOT_FOUND,
+            (model_pb.InvoiceError.Reason.SKU_NOT_FOUND,
              InvoiceErrorReason.SKU_NOT_FOUND),
             (500, InvoiceErrorReason.UNKNOWN)
         ]

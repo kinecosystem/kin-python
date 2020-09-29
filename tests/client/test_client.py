@@ -6,7 +6,7 @@ import grpc
 import grpc_testing
 import pytest
 from agoraapi.account.v3 import account_service_pb2 as account_pb
-from agoraapi.common.v3 import model_pb2
+from agoraapi.common.v3 import model_pb2 as model_pb
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from kin_base import transaction_envelope as te, memo, operation
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
@@ -15,7 +15,7 @@ from agora.client.client import Client, RetryConfig, BaseClient, _NETWORK_NAMES
 from agora.client.environment import Environment
 from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBalanceError, \
     DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
-    TransactionRejectedError, TransactionNotFound, Error, AlreadyPaidError
+    TransactionRejectedError, TransactionNotFoundError, Error, AlreadyPaidError
 from agora.model.earn import Earn
 from agora.model.invoice import InvoiceList, Invoice, LineItem
 from agora.model.keys import PrivateKey
@@ -206,10 +206,10 @@ class TestAgoraClient:
         op_result = gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result, op_result])
 
-        il = model_pb2.InvoiceList(invoices=[
-            model_pb2.Invoice(
+        il = model_pb.InvoiceList(invoices=[
+            model_pb.Invoice(
                 items=[
-                    model_pb2.Invoice.LineItem(title='t1', amount=15),
+                    model_pb.Invoice.LineItem(title='t1', amount=15),
                 ]
             ),
         ])
@@ -223,7 +223,7 @@ class TestAgoraClient:
         envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, hash_memo)
 
         history_item = tx_pb.HistoryItem(
-            hash=model_pb2.TransactionHash(value=tx_hash),
+            hash=model_pb.TransactionHash(value=tx_hash),
             result_xdr=result_xdr,
             envelope_xdr=envelope_xdr,
             cursor=tx_pb.Cursor(value=b'cursor1'),
@@ -265,10 +265,10 @@ class TestAgoraClient:
         op_result = gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [op_result, op_result])
 
-        il = model_pb2.InvoiceList(invoices=[
-            model_pb2.Invoice(
+        il = model_pb.InvoiceList(invoices=[
+            model_pb.Invoice(
                 items=[
-                    model_pb2.Invoice.LineItem(title='t1', amount=15),
+                    model_pb.Invoice.LineItem(title='t1', amount=15),
                 ]
             ),
         ])
@@ -282,7 +282,7 @@ class TestAgoraClient:
         envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, hash_memo)
 
         history_item = tx_pb.HistoryItem(
-            hash=model_pb2.TransactionHash(value=tx_hash),
+            hash=model_pb.TransactionHash(value=tx_hash),
             result_xdr=result_xdr,
             envelope_xdr=envelope_xdr,
             cursor=tx_pb.Cursor(value=b'cursor1'),
@@ -323,7 +323,7 @@ class TestAgoraClient:
         resp = tx_pb.GetTransactionResponse(state=tx_pb.GetTransactionResponse.State.UNKNOWN)
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
 
-        with pytest.raises(TransactionNotFound):
+        with pytest.raises(TransactionNotFoundError):
             future.result()
 
         self._assert_user_agent(md)
@@ -336,7 +336,7 @@ class TestAgoraClient:
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.OK,
             account_info=account_pb.AccountInfo(
-                account_id=model_pb2.StellarAccountId(
+                account_id=model_pb.StellarAccountId(
                     value=private_key.public_key.stellar_address
                 ),
                 sequence_number=10,
@@ -512,7 +512,7 @@ class TestAgoraClient:
 
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.REJECTED,
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
         )
         submit_req = self._set_submit_transaction_response(grpc_channel, resp)
 
@@ -538,10 +538,10 @@ class TestAgoraClient:
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR,
             invoice_errors=[
-                tx_pb.SubmitTransactionResponse.InvoiceError(
+                model_pb.InvoiceError(
                     op_index=0,
                     invoice=invoice.to_proto(),
-                    reason=tx_pb.SubmitTransactionResponse.InvoiceError.Reason.ALREADY_PAID,
+                    reason=model_pb.InvoiceError.Reason.ALREADY_PAID,
                 )
             ]
         )
@@ -570,7 +570,7 @@ class TestAgoraClient:
         result_xdr = gen_result_xdr(xdr_const.txFAILED, [gen_payment_op_result(xdr_const.PAYMENT_UNDERFUNDED)])
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.FAILED,
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
             ledger=10,
             result_xdr=result_xdr,
         )
@@ -596,7 +596,7 @@ class TestAgoraClient:
 
         resp = tx_pb.SubmitTransactionResponse(
             result=5,  # invalid result code, should throw an error
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
         )
 
         submit_reqs = []
@@ -625,7 +625,7 @@ class TestAgoraClient:
         result_xdr = gen_result_xdr(xdr_const.txBAD_SEQ, [])
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.FAILED,
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
             ledger=10,
             result_xdr=result_xdr,
         )
@@ -909,7 +909,7 @@ class TestAgoraClient:
 
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.REJECTED,
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
         )
         submit_req = self._set_submit_transaction_response(grpc_channel, resp)
 
@@ -945,15 +945,15 @@ class TestAgoraClient:
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR,
             invoice_errors=[
-                tx_pb.SubmitTransactionResponse.InvoiceError(
+                model_pb.InvoiceError(
                     op_index=0,
                     invoice=earns[0].invoice.to_proto(),
-                    reason=tx_pb.SubmitTransactionResponse.InvoiceError.Reason.ALREADY_PAID,
+                    reason=model_pb.InvoiceError.Reason.ALREADY_PAID,
                 ),
-                tx_pb.SubmitTransactionResponse.InvoiceError(
+                model_pb.InvoiceError(
                     op_index=0,
                     invoice=earns[1].invoice.to_proto(),
-                    reason=tx_pb.SubmitTransactionResponse.InvoiceError.Reason.WRONG_DESTINATION,
+                    reason=model_pb.InvoiceError.Reason.WRONG_DESTINATION,
                 )
             ]
         )
@@ -996,7 +996,7 @@ class TestAgoraClient:
                                                          gen_payment_op_result(xdr_const.PAYMENT_NO_DESTINATION)])
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.FAILED,
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
             ledger=10,
             result_xdr=result_xdr,
         )
@@ -1029,7 +1029,7 @@ class TestAgoraClient:
 
         resp = tx_pb.SubmitTransactionResponse(
             result=5,  # invalid result code, should throw an error
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
         )
 
         submit_reqs = []
@@ -1065,7 +1065,7 @@ class TestAgoraClient:
         result_xdr = gen_result_xdr(xdr_const.txBAD_SEQ, [])
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.FAILED,
-            hash=model_pb2.TransactionHash(value=b'somehash'),
+            hash=model_pb.TransactionHash(value=b'somehash'),
             ledger=10,
             result_xdr=result_xdr,
         )
@@ -1114,7 +1114,7 @@ class TestAgoraClient:
         resp = account_pb.GetAccountInfoResponse(
             result=account_pb.GetAccountInfoResponse.Result.OK,
             account_info=account_pb.AccountInfo(
-                account_id=model_pb2.StellarAccountId(
+                account_id=model_pb.StellarAccountId(
                     value=pk.public_key.stellar_address
                 ),
                 sequence_number=sequence,
@@ -1139,7 +1139,7 @@ class TestAgoraClient:
     def _set_successful_submit_transaction_response(channel: grpc_testing.Channel, tx_hash: bytes, result_xdr: bytes):
         resp = tx_pb.SubmitTransactionResponse(
             result=tx_pb.SubmitTransactionResponse.Result.OK,
-            hash=model_pb2.TransactionHash(value=tx_hash),
+            hash=model_pb.TransactionHash(value=tx_hash),
             ledger=10,
             result_xdr=result_xdr,
         )
