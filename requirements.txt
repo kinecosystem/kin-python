@@ -1,5 +1,5 @@
 grpcio==1.30.0
-../agora-api/python
+agora-api==0.20.0
 kin-base==1.4.1
 ed25519==1.4; sys_platform != "win32" and sys_platform != "cygwin"
 pure25519==0.0.1; sys_platform == "win32" or sys_platform == "cygwin"
