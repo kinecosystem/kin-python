@@ -1,4 +1,3 @@
-import asyncio
 import base64
 from typing import List, Optional
 
@@ -244,16 +243,6 @@ class Client(BaseClient):
         else:
             self._asset_issuer = None
             self._metadata = (user_agent(VERSION),)
-
-        # This Horizon instance is necessary to use the kin_base.Builder object,
-        # but it does not get used to submit transactions
-        self._horizon = kin_base.Horizon()
-
-        # Since we don't actually use Horizon for any requests, call `self._horizon.close()` to preemptively ensure that
-        # any open aiohttp.ClientSessions get closed.
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(self._horizon.close())
 
     def create_account(self, private_key: PrivateKey):
         if self._kin_version not in _SUPPORTED_VERSIONS:
@@ -517,7 +506,9 @@ class Client(BaseClient):
         :param source: The transaction source account.
         :return: a :class:`Builder` <kin_base.Builder> object.
         """
-        return kin_base.Builder(self._horizon, self.network_name,
+        # A Horizon instance is expected as the first argument, but it isn't used, so pass None instead to avoid
+        # unnecessary aiohttp.ClientSessions getting opened.
+        return kin_base.Builder(None, self.network_name,
                                 100,
                                 source.stellar_seed)
 
