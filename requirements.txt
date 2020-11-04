@@ -1,6 +1,7 @@
 grpcio==1.30.0
 agora-api==0.19.0
 kin-base==1.4.1
-ed25519==1.4
+ed25519==1.4; sys_platform != "win32" and sys_platform != "cygwin"
+pure25519==0.0.1; sys_platform == "win32" or sys_platform == "cygwin"
 protobuf==3.12.2
 pynacl==1.4.0
