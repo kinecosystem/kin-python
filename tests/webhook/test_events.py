@@ -6,7 +6,7 @@ from agoraapi.common.v3 import model_pb2
 from agora import solana
 from agora.error import InvalidSignatureError, BadNonceError
 from agora.model import AgoraMemo, TransactionType
-from agora.webhook.events import StellarData, TransactionEvent, Event, SolanaData
+from agora.webhook.events import StellarEvent, TransactionEvent, Event, SolanaEvent
 from tests.utils import generate_keys
 
 
@@ -35,10 +35,10 @@ class TestSolanaData:
             'transaction_error_raw': 'raw_error'
         }
 
-        solana_data = SolanaData.from_json(data)
-        assert solana_data.transaction == tx
-        assert isinstance(solana_data.tx_error, InvalidSignatureError)
-        assert solana_data.tx_error_raw == 'raw_error'
+        solana_event = SolanaEvent.from_json(data)
+        assert solana_event.transaction == tx
+        assert isinstance(solana_event.tx_error, InvalidSignatureError)
+        assert solana_event.tx_error_raw == 'raw_error'
 
 
 class TestStellarData:
@@ -48,9 +48,9 @@ class TestStellarData:
             'envelope_xdr': 'envelopexdr'
         }
 
-        stellar_data = StellarData.from_json(data)
-        assert stellar_data.result_xdr == 'resultxdr'
-        assert stellar_data.envelope_xdr == 'envelopexdr'
+        stellar_event = StellarEvent.from_json(data)
+        assert stellar_event.result_xdr == 'resultxdr'
+        assert stellar_event.envelope_xdr == 'envelopexdr'
 
 
 class TestTransactionEvent:
@@ -64,8 +64,8 @@ class TestTransactionEvent:
         assert event.kin_version == 3
         assert event.tx_id == b'txhash'
         assert not event.invoice_list
-        assert not event.stellar_data
-        assert not event.solana_data
+        assert not event.stellar_event
+        assert not event.solana_event
 
     def test_from_json_full_kin_3(self):
         il = model_pb2.InvoiceList(
@@ -82,7 +82,7 @@ class TestTransactionEvent:
             'kin_version': 3,
             'tx_hash': base64.b64encode(b'txhash'),
             'invoice_list': il.SerializeToString(),
-            'stellar_data': {
+            'stellar_event': {
                 'result_xdr': 'resultxdr',
                 'envelope_xdr': 'envelopexdr',
             }
@@ -100,10 +100,10 @@ class TestTransactionEvent:
         assert line_item.amount == 50
         assert line_item.sku == b'somesku'
 
-        assert event.stellar_data.result_xdr == 'resultxdr'
-        assert event.stellar_data.envelope_xdr == 'envelopexdr'
+        assert event.stellar_event.result_xdr == 'resultxdr'
+        assert event.stellar_event.envelope_xdr == 'envelopexdr'
 
-        assert not event.solana_data
+        assert not event.solana_event
 
     def test_from_json_full_kin_4(self):
         memo = AgoraMemo.new(1, TransactionType.P2P, 0, b'somefk')
@@ -137,7 +137,7 @@ class TestTransactionEvent:
             'kin_version': 4,
             'tx_id': base64.b64encode(b'txsig'),
             'invoice_list': il.SerializeToString(),
-            'solana_data': {
+            'solana_event': {
                 'transaction': base64.b64encode(tx.marshal()).decode('utf-8'),
                 'transaction_error': 'bad_nonce',
                 'transaction_error_raw': 'raw_error',
@@ -156,11 +156,11 @@ class TestTransactionEvent:
         assert line_item.amount == 50
         assert line_item.sku == b'somesku'
 
-        assert not event.stellar_data
+        assert not event.stellar_event
 
-        assert event.solana_data.transaction == tx
-        assert isinstance(event.solana_data.tx_error, BadNonceError)
-        assert event.solana_data.tx_error_raw == 'raw_error'
+        assert event.solana_event.transaction == tx
+        assert isinstance(event.solana_event.tx_error, BadNonceError)
+        assert event.solana_event.tx_error_raw == 'raw_error'
 
     def test_from_json_invalid(self):
         # missing/invalid kin_version

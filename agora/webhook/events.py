@@ -8,8 +8,8 @@ from agora.error import Error, InvalidSignatureError, BadNonceError, Insufficien
 from agora.model.invoice import InvoiceList
 
 
-class SolanaData:
-    """Solana-specific data related to a transaction.
+class SolanaEvent:
+    """Solana event data related to a transaction.
 
     :param transaction: The :class:`Transaction <agora.solana.transaction.Transaction>` object.
     :param tx_error: (optional) The :class:`Error <agora.error.Error` indicating why the transaction failed.
@@ -24,7 +24,7 @@ class SolanaData:
         self.tx_error_raw = tx_error_raw
 
     @classmethod
-    def from_json(cls, data: dict) -> 'SolanaData':
+    def from_json(cls, data: dict) -> 'SolanaEvent':
         tx_string = data.get('transaction', "")
         if not tx_string:
             raise ValueError('`transaction` is required in Solana transaction events')
@@ -52,8 +52,8 @@ class SolanaData:
         return Error(f'error: {e}')
 
 
-class StellarData:
-    """Stellar-specific data related to a transaction.
+class StellarEvent:
+    """Stellar event data related to a transaction.
 
     :param result_xdr: A base64-encoded transaction result XDR.
     :param envelope_xdr: A base64-encoded transaction envelope XDR.
@@ -64,7 +64,7 @@ class StellarData:
         self.envelope_xdr = envelope_xdr
 
     @classmethod
-    def from_json(cls, data: dict) -> 'StellarData':
+    def from_json(cls, data: dict) -> 'StellarEvent':
         return cls(
             result_xdr=data.get('result_xdr'),
             envelope_xdr=data.get('envelope_xdr'),
@@ -79,20 +79,20 @@ class TransactionEvent:
     :param tx_id: the id of the transaction. Either a 32-byte Stellar transaction hash or a 64-byte Solana transaction
         signature.
     :param invoice_list: (optional) the InvoiceList related to the transaction.
-    :param stellar_data: (optional) any Stellar data related to the transaction. Set on Kin 2 and Kin 3 transaction
+    :param stellar_event: (optional) any Stellar data related to the transaction. Set on Kin 2 and Kin 3 transaction
         events.
-    :param solana_data: (optional) any Solana data related to the transaction. Set on Kin 4 transaction events.
+    :param solana_event: (optional) any Solana data related to the transaction. Set on Kin 4 transaction events.
     """
 
     def __init__(
-        self, kin_version: int, tx_id: bytes, invoice_list: InvoiceList = None, stellar_data: StellarData = None,
-        solana_data: SolanaData = None,
+        self, kin_version: int, tx_id: bytes, invoice_list: InvoiceList = None, stellar_event: StellarEvent = None,
+        solana_event: SolanaEvent = None,
     ):
         self.kin_version = kin_version
         self.tx_id = tx_id
         self.invoice_list = invoice_list
-        self.stellar_data = stellar_data
-        self.solana_data = solana_data
+        self.stellar_event = stellar_event
+        self.solana_event = solana_event
 
     @classmethod
     def from_json(cls, data: dict) -> 'TransactionEvent':
@@ -118,12 +118,12 @@ class TransactionEvent:
 
         tx_event = cls(kin_version, tx_id, invoice_list=invoice_list)
 
-        solana_data = data.get('solana_data', None)
+        solana_data = data.get('solana_event', None)
         if solana_data:
-            tx_event.solana_data = SolanaData.from_json(solana_data)
-        stellar_data = data.get('stellar_data', None)
+            tx_event.solana_event = SolanaEvent.from_json(solana_data)
+        stellar_data = data.get('stellar_event', None)
         if stellar_data:
-            tx_event.stellar_data = StellarData.from_json(stellar_data)
+            tx_event.stellar_event = StellarEvent.from_json(stellar_data)
 
         return tx_event
 
