@@ -21,13 +21,13 @@ class SignTransactionRequest:
     :param kin_version: The version of Kin this transaction is using.
     :param envelope: (optional) The :class:`TransactionEnvelope <kin_base.transaction_envelope.TransactionEnvelope>`
         object. Only set on Stellar transactions.
-    :param transaction: (optional) The :class:`Transaction <agora.solana.transaction.Transaction>` object. Only set on
-        Solana transactions.
 
         Note: for Kin 2 transactions, Kin amounts inside the envelope will appear to be 100x larger than they are in
         reality. This is due to the fact that the `kin_base` module (which is used to parse the Stellar envelope XDR
         string) assumes a smallest denomination of 1e-5, but Kin 2 has a smallest denomination of 1e-7. An accurate
         representation of the amounts can be found inside `payments`.
+    :param transaction: (optional) The :class:`Transaction <agora.solana.transaction.Transaction>` object. Only set on
+        Solana transactions.
     """
 
     def __init__(
@@ -54,9 +54,9 @@ class SignTransactionRequest:
             il = None
 
         if kin_version == 4:
-            tx_string = data.get('transaction', "")
+            tx_string = data.get('solana_transaction', "")
             if not tx_string:
-                raise ValueError('`transaction` is required on Kin 4 transactions')
+                raise ValueError('`solana_transaction` is required on Kin 4 transactions')
 
             tx = solana.Transaction.unmarshal(base64.b64decode(tx_string))
             return cls(ReadOnlyPayment.payments_from_transaction(tx, il), kin_version, transaction=tx)
@@ -96,7 +96,7 @@ class SignTransactionResponse:
         self.rejected = False
 
     def sign(self, private_key: PrivateKey):
-        """Signs the transaction envelope with the provided account private key.
+        """Signs the transaction envelope with the provided account private key. No-op on Kin 4 transactions.
 
         :param private_key: The account :class:`PrivateKey <agora.model.keys.PrivateKey>`
         """

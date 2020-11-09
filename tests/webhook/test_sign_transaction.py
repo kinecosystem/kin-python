@@ -99,7 +99,7 @@ class TestSignTransactionRequest:
 
         data = {
             'kin_version': 4,
-            'transaction': base64.b64encode(tx.marshal()),
+            'solana_transaction': base64.b64encode(tx.marshal()),
             'invoice_list': base64.b64encode(il.SerializeToString()),
         }
 

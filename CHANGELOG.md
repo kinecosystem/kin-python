@@ -3,7 +3,7 @@
 ## Unreleased
 - Add Kin 4 support
 - Move `agora.model.keys` to `agora.keys`
-- Rename `tx_hash` to `transaction_id` in `Client.get_transaction`, `TransactionData`, and `EarnResult`
+- Rename `tx_hash` to `tx_id` in `Client.get_transaction`, `TransactionData`, `EarnResult`, and 'TransactionEvent'
 - Add `default_commitment` parameter to `Client` constructor
 - Add optional `commitment` parameter to `Client` methods (`create_account`, `get_balance`, `get_transaction`, `submit_payment`, `submit_earn_batch`)
 - Add optional `subsidizer` parameter to `Payment`, `Client.create_account` and `Client.submit_earn_batch`

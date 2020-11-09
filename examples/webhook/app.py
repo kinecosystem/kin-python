@@ -52,7 +52,7 @@ def _handle_events(received_events: List[Event]):
             logging.debug(f'received event: {event}')
             continue
 
-        logging.debug(f'transaction completed: {event.transaction_event.tx_hash.hex()}')
+        logging.debug(f'transaction completed: {event.transaction_event.tx_id.hex()}')
 
 
 def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse):

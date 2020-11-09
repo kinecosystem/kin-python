@@ -21,10 +21,10 @@ earns = [Earn(dest, kin_to_quarks('1')) for idx, dest in enumerate(destinations)
 batch_result = client.submit_earn_batch(source, earns)
 print(f'{len(batch_result.succeeded)} succeeded, {len(batch_result.failed)} failed')
 for result in batch_result.succeeded:
-    print(f'Sent 1 kin to {result.earn.destination.stellar_address} in transaction {result.transaction_id.hex()}')
+    print(f'Sent 1 kin to {result.earn.destination.stellar_address} in transaction {result.tx_id.hex()}')
 for result in batch_result.failed:
     print(
-        f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction {result.transaction_id.hex()} '
+        f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction {result.tx_id.hex()} '
         f'(error: {repr(result.error)})')
 
 # Send an earn batch of earns with 1 Kin each, with invoices
@@ -33,11 +33,11 @@ earns = [Earn(dest, kin_to_quarks('1'), invoice=Invoice([LineItem(f'Payment {idx
 batch_result = client.submit_earn_batch(source, earns)
 print(f'{len(batch_result.succeeded)} succeeded, {len(batch_result.failed)} failed')
 for result in batch_result.succeeded:
-    print(f'Sent 1 kin to {result.earn.destination.stellar_address} in transaction {result.transaction_id.hex()}',
+    print(f'Sent 1 kin to {result.earn.destination.stellar_address} in transaction {result.tx_id.hex()}',
           )
 for result in batch_result.failed:
     print(
-        f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction {result.transaction_id.hex()} '
+        f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction {result.tx_id.hex()} '
         f'(error: {repr(result.error)})')
 
 client.close()

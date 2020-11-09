@@ -43,7 +43,7 @@ class TestTransaction:
         )
 
         data = TransactionData.from_proto(history_item, tx_pb.GetTransactionResponse.State.SUCCESS)
-        assert data.transaction_id == b'somehash'
+        assert data.tx_id == b'somehash'
         assert data.transaction_state == TransactionState.SUCCESS
         assert len(data.payments) == 1
 
@@ -107,7 +107,7 @@ class TestTransaction:
         )
 
         data = TransactionData.from_proto(history_item, tx_pb.GetTransactionResponse.State.SUCCESS)
-        assert data.transaction_id == b'somehash'
+        assert data.tx_id == b'somehash'
         assert data.transaction_state == TransactionState.SUCCESS
         assert len(data.payments) == 2
 
@@ -150,7 +150,7 @@ class TestTransaction:
         )
 
         data = TransactionData.from_proto(history_item, tx_pb.GetTransactionResponse.State.SUCCESS)
-        assert data.transaction_id == b'somehash'
+        assert data.tx_id == b'somehash'
         assert data.transaction_state == TransactionState.SUCCESS
         assert len(data.payments) == 1
 
@@ -207,7 +207,7 @@ class TestTransaction:
         )
 
         data = TransactionData.from_proto(history_item, tx_pb.GetTransactionResponse.State.SUCCESS)
-        assert data.transaction_id == b'somehash'
+        assert data.tx_id == b'somehash'
         assert data.transaction_state == TransactionState.SUCCESS
         assert len(data.payments) == 2
 

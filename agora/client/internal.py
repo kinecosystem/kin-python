@@ -26,10 +26,10 @@ _SERVICE_CONFIG_CACHE_KEY = b'GetServiceConfig'
 
 
 class SubmitTransactionResult:
-    def __init__(self, transaction_id: Optional[bytes] = None,
+    def __init__(self, tx_id: Optional[bytes] = None,
                  invoice_errors: Optional[List[model_pb_v3.InvoiceError]] = None,
                  tx_error: Optional[TransactionErrors] = None):
-        self.transaction_id = transaction_id if transaction_id else bytes(32)
+        self.tx_id = tx_id if tx_id else bytes(32)
         self.invoice_errors = invoice_errors if invoice_errors else []
         self.tx_error = tx_error
 
@@ -125,11 +125,11 @@ class InternalClient:
         return AccountInfo.from_proto(resp.account_info)
 
     def get_transaction(
-        self, transaction_id: bytes, commitment: Optional[Commitment] = Commitment.SINGLE
+        self, tx_id: bytes, commitment: Optional[Commitment] = Commitment.SINGLE
     ) -> TransactionData:
         """Get a transaction from Agora.
 
-        :param transaction_id: The id of the transaction, in bytes.
+        :param tx_id: The id of the transaction, in bytes.
         :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use. Only applicable for
             Solana transactions.
         :return: A :class:`TransactionData <agora.model.transaction.TransactionData>` object.
@@ -137,7 +137,7 @@ class InternalClient:
 
         def _get_transaction():
             req = tx_pb_v4.GetTransactionRequest(
-                transaction_id=model_pb_v4.TransactionId(value=transaction_id),
+                transaction_id=model_pb_v4.TransactionId(value=tx_id),
                 commitment=commitment.to_proto(),
             )
             return self._transaction_stub_v4.GetTransaction(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
@@ -147,7 +147,7 @@ class InternalClient:
         if resp.item.transaction_id.value:
             return TransactionData.from_proto(resp.item, resp.state)
 
-        return TransactionData(transaction_id, TransactionState.from_proto_v4(resp.state))
+        return TransactionData(tx_id, TransactionState.from_proto_v4(resp.state))
 
     def submit_stellar_transaction(
         self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None
@@ -171,7 +171,7 @@ class InternalClient:
             except grpc.RpcError as e:
                 raise BlockchainVersionError() if self._is_migration_error(e) else e
 
-            result = SubmitTransactionResult(transaction_id=resp.hash.value)
+            result = SubmitTransactionResult(tx_id=resp.hash.value)
             if resp.result == tx_pb_v3.SubmitTransactionResponse.Result.REJECTED:
                 raise TransactionRejectedError()
             elif resp.result == tx_pb_v3.SubmitTransactionResponse.Result.INVOICE_ERROR:
@@ -318,7 +318,7 @@ class InternalClient:
             if resp.result == tx_pb_v4.SubmitTransactionResponse.Result.PAYER_REQUIRED:
                 raise PayerRequiredError()
 
-            result = SubmitTransactionResult(transaction_id=resp.signature.value)
+            result = SubmitTransactionResult(tx_id=resp.signature.value)
             if resp.result == tx_pb_v4.SubmitTransactionResponse.Result.ALREADY_SUBMITTED:
                 # If this occurs on the first attempt, it's likely due to the submission of two identical transactions
                 # in quick succession and we should raise the error to the caller. Otherwise, it's likely that the

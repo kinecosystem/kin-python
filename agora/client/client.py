@@ -118,10 +118,10 @@ class BaseClient:
         """
         raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement create_account')
 
-    def get_transaction(self, transaction_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
+    def get_transaction(self, tx_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
         """Retrieves a transaction.
 
-        :param transaction_id: The id of the transaction to retrieve. This can be either the 32-byte hash of a Stellar-based
+        :param tx_id: The id of the transaction to retrieve. This can be either the 32-byte hash of a Stellar-based
             transaction (on Kin 2 or 3) or the 64-byte signature of a Solana-based transaction (on Kin 4).
         :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
         :return: a :class:`TransactionData <agora.model.transaction.TransactionData>` object.
@@ -307,9 +307,9 @@ class Client(BaseClient):
 
         return retry(self._nonce_retry_strategies, _submit_create_solana_account)
 
-    def get_transaction(self, transaction_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
+    def get_transaction(self, tx_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
         commitment = commitment if commitment else self._default_commitment
-        return self._internal_client.get_transaction(transaction_id, commitment)
+        return self._internal_client.get_transaction(tx_id, commitment)
 
     def get_balance(self, public_key: PublicKey, commitment: Optional[Commitment] = None) -> int:
         if self._kin_version not in _SUPPORTED_VERSIONS:
@@ -379,7 +379,7 @@ class Client(BaseClient):
                 raise SkuNotFoundError()
             raise Error(f'unknown invoice error: {result.invoice_errors[0].reason}')
 
-        return result.transaction_id
+        return result.tx_id
 
     def submit_earn_batch(
         self, sender: PrivateKey, earns: List[Earn], channel: Optional[bytes] = None, memo: Optional[str] = None,
@@ -431,17 +431,17 @@ class Client(BaseClient):
                 break
 
             if not result.tx_error:
-                succeeded += [EarnResult(earn, transaction_id=result.transaction_id) for earn in earn_batch]
+                succeeded += [EarnResult(earn, tx_id=result.tx_id) for earn in earn_batch]
                 continue
 
             # At this point, the batch is considered failed
             err = result.tx_error
 
             if err.op_errors:
-                failed += [EarnResult(earn, transaction_id=result.transaction_id, error=err.op_errors[idx])
+                failed += [EarnResult(earn, tx_id=result.tx_id, error=err.op_errors[idx])
                            for idx, earn in enumerate(earn_batch)]
             else:
-                failed += [EarnResult(earn, transaction_id=result.transaction_id, error=err.tx_error)
+                failed += [EarnResult(earn, tx_id=result.tx_id, error=err.tx_error)
                            for idx, earn in enumerate(earn_batch)]
             break
 

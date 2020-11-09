@@ -69,10 +69,10 @@ batch_result = client.submit_earn_batch(sender, earns)
 print(f'{len(batch_result.succeeded)} succeeded, {len(batch_result.failed)} failed')
 for result in batch_result.succeeded:
     print(f'Sent 1 kin to {result.earn.destination.stellar_address} in transaction '
-          f'{base58.b58encode(result.transaction_id)}')
+          f'{base58.b58encode(result.tx_id)}')
 for result in batch_result.failed:
     print(f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction '
-          f'{base58.b58encode(result.transaction_id)} (error: {repr(result.error)})')
+          f'{base58.b58encode(result.tx_id)} (error: {repr(result.error)})')
 
 print(f'balance: {client.get_balance(sender.public_key, commitment=Commitment.ROOT)}')
 

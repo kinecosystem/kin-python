@@ -286,7 +286,7 @@ class TestAgoraClient:
         self._assert_user_agent(md)
 
         tx_data = future.result()
-        assert tx_data.transaction_id == tx_hash
+        assert tx_data.tx_id == tx_hash
         assert len(tx_data.payments) == 1
         assert not tx_data.error
 
@@ -353,7 +353,7 @@ class TestAgoraClient:
         assert md[1] == ('kin-version', '2')
 
         tx_data = future.result()
-        assert tx_data.transaction_id == tx_hash
+        assert tx_data.tx_id == tx_hash
         assert len(tx_data.payments) == 1
         assert not tx_data.error
 
@@ -379,7 +379,7 @@ class TestAgoraClient:
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
 
         tx_data = future.result()
-        assert tx_data.transaction_id == tx_hash
+        assert tx_data.tx_id == tx_hash
         assert tx_data.transaction_state == TransactionState.UNKNOWN
 
         self._assert_user_agent(md)
@@ -813,7 +813,7 @@ class TestAgoraClient:
 
         earn_result = batch_earn_result.succeeded[0]
         assert earn_result.earn == earns[0]
-        assert earn_result.transaction_id == b'somehash'
+        assert earn_result.tx_id == b'somehash'
         assert not earn_result.error
 
         assert account_req.account_id.value == channel.public_key.stellar_address
@@ -841,7 +841,7 @@ class TestAgoraClient:
 
         earn_result = batch_earn_result.succeeded[0]
         assert earn_result.earn == earns[0]
-        assert earn_result.transaction_id == b'somehash'
+        assert earn_result.tx_id == b'somehash'
         assert not earn_result.error
 
         assert account_req.account_id.value == sender.public_key.stellar_address
@@ -868,7 +868,7 @@ class TestAgoraClient:
 
         earn_result = batch_earn_result.succeeded[0]
         assert earn_result.earn == earns[0]
-        assert earn_result.transaction_id == b'somehash'
+        assert earn_result.tx_id == b'somehash'
         assert not earn_result.error
 
         assert account_req.account_id.value == sender.public_key.stellar_address
@@ -899,7 +899,7 @@ class TestAgoraClient:
         assert len(batch_earn_result.failed) == 0
 
         for idx, earn_result in enumerate(batch_earn_result.succeeded):
-            assert earn_result.transaction_id == b'somehash'
+            assert earn_result.tx_id == b'somehash'
             assert earn_result.earn == earns[idx]
             assert not earn_result.error
 
@@ -974,7 +974,7 @@ class TestAgoraClient:
 
         for idx, earn_result in enumerate(batch_earn_result.failed):
             assert earn_result.earn == earns[idx]
-            assert not earn_result.transaction_id
+            assert not earn_result.tx_id
             assert isinstance(earn_result.error, TransactionRejectedError)
 
         assert account_req.account_id.value == sender.public_key.stellar_address
@@ -1020,7 +1020,7 @@ class TestAgoraClient:
 
         for idx, earn_result in enumerate(batch_earn_result.failed):
             assert earn_result.earn == earns[idx]
-            assert not earn_result.transaction_id
+            assert not earn_result.tx_id
             assert isinstance(earn_result.error, Error)
 
         assert account_req.account_id.value == sender.public_key.stellar_address
@@ -1064,7 +1064,7 @@ class TestAgoraClient:
         expected_errors = [InsufficientBalanceError, DestinationDoesNotExistError]
         for idx, earn_result in enumerate(batch_earn_result.failed):
             assert earn_result.earn == earns[idx]
-            assert earn_result.transaction_id  # make sure it's set
+            assert earn_result.tx_id  # make sure it's set
             assert isinstance(earn_result.error, expected_errors[idx])
 
         assert account_req.account_id.value == sender.public_key.stellar_address
@@ -1098,7 +1098,7 @@ class TestAgoraClient:
         assert len(batch_earn_result.failed) == 1
 
         earn_result = batch_earn_result.failed[0]
-        assert not earn_result.transaction_id
+        assert not earn_result.tx_id
         assert earn_result.earn == earns[0]
         assert isinstance(earn_result.error, Error)
 
@@ -1137,7 +1137,7 @@ class TestAgoraClient:
         assert len(batch_earn_result.failed) == 1
 
         earn_result = batch_earn_result.failed[0]
-        assert not earn_result.transaction_id
+        assert not earn_result.tx_id
         assert earn_result.earn == earns[0]
         assert isinstance(earn_result.error, BadNonceError)
 
@@ -1866,7 +1866,7 @@ class TestAgoraClient:
         assert len(batch_earn_result.failed) == 10
         for idx, result in enumerate(batch_earn_result.failed):
             assert result.earn == all_earns[idx]
-            assert result.transaction_id == b'failedsig'
+            assert result.tx_id == b'failedsig'
             assert isinstance(result.error, AccountNotFoundError)
 
     @pytest.mark.parametrize(

@@ -299,7 +299,7 @@ class TestInternalClientV4:
         assert req.transaction_id.value == transaction_id
 
         tx_data = future.result()
-        assert tx_data.transaction_id == transaction_id
+        assert tx_data.tx_id == transaction_id
         assert tx_data.transaction_state == TransactionState.SUCCESS
         assert len(tx_data.payments) == 1
         assert not tx_data.error
@@ -323,7 +323,7 @@ class TestInternalClientV4:
         assert req.transaction_id.value == transaction_id
 
         tx_data = future.result()
-        assert tx_data.transaction_id == transaction_id
+        assert tx_data.tx_id == transaction_id
         assert tx_data.transaction_state == TransactionState.FAILED
         assert len(tx_data.payments) == 0
         assert not tx_data.error
@@ -341,7 +341,7 @@ class TestInternalClientV4:
         assert req.transaction.value == tx_bytes
 
         result = future.result()
-        assert result.transaction_id == tx_sig
+        assert result.tx_id == tx_sig
         assert not result.tx_error
         assert not result.invoice_errors
 
@@ -379,7 +379,7 @@ class TestInternalClientV4:
         assert req.transaction.value == tx_bytes
 
         result = future.result()
-        assert result.transaction_id == tx_sig
+        assert result.tx_id == tx_sig
         assert not result.tx_error
         assert not result.invoice_errors
 
@@ -408,7 +408,7 @@ class TestInternalClientV4:
         assert req.transaction.value == tx_bytes
 
         result = future.result()
-        assert result.transaction_id == tx_sig
+        assert result.tx_id == tx_sig
         assert not result.tx_error
         assert result.invoice_errors == resp.invoice_errors
 
@@ -458,7 +458,7 @@ class TestInternalClientV4:
         assert req.transaction.value == tx_bytes
 
         result = future.result()
-        assert result.transaction_id == tx_sig
+        assert result.tx_id == tx_sig
         assert result.tx_error
         assert isinstance(result.tx_error.tx_error, BadNonceError)
         assert not result.tx_error.op_errors

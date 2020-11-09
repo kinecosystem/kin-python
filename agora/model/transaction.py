@@ -43,17 +43,17 @@ class TransactionData:
     """The :class:`TransactionData <TransactionData>` object, which contains information about the payments in a
     transaction.
 
-    :param transaction_id: Either a 32-byte transaction hash, or a 64-byte transaction signature.
+    :param tx_id: Either a 32-byte transaction hash, or a 64-byte transaction signature.
     :param payments: (optional) A list of :class:`ReadOnlyPayment <agora.model.payment.ReadOnlyPayment>` objects.
     :param error: (optional)) A :class:`TransactionError <agora.error.TransactionError>` object that contains extra
         details about why a transaction failed. If present, it indicates that the transaction failed.
     """
 
     def __init__(
-        self, transaction_id: bytes, transaction_state: TransactionState, payments: List[ReadOnlyPayment] = None,
+        self, tx_id: bytes, transaction_state: TransactionState, payments: List[ReadOnlyPayment] = None,
         error: Optional[TransactionErrors] = None,
     ):
-        self.transaction_id = transaction_id
+        self.tx_id = tx_id
         self.transaction_state = transaction_state
         self.payments = payments if payments else []
         self.error = error
@@ -62,13 +62,13 @@ class TransactionData:
         if not isinstance(other, TransactionData):
             return False
 
-        return (self.transaction_id == other.transaction_id and
+        return (self.tx_id == other.tx_id and
                 all(payment == other.payments[idx] for idx, payment in enumerate(self.payments)) and
                 self.error == other.error)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'tx_hash={self.transaction_id}, payments={[p for p in self.payments]!r}, error={self.error!r})'
+               f'tx_id={self.tx_id}, payments={[p for p in self.payments]!r}, error={self.error!r})'
 
     @classmethod
     def from_proto(
