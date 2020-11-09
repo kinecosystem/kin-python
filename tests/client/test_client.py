@@ -189,6 +189,20 @@ class TestAgoraClient:
         with pytest.raises(UnsupportedVersionError):
             client.submit_earn_batch(private_key, [])
 
+    def test_desired_kin_version(self, grpc_channel):
+        retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
+        with pytest.raises(ValueError):
+            Client(Environment.TEST, grpc_channel=grpc_channel, retry_config=retry_config, kin_version=3,
+                   desired_kin_version=5)
+
+        client = Client(Environment.TEST, grpc_channel=grpc_channel, retry_config=retry_config, kin_version=3,
+                        desired_kin_version=4)
+
+        assert len(client._internal_client._metadata) == 3
+        assert client._internal_client._metadata[0] == user_agent(VERSION)
+        assert client._internal_client._metadata[1] == ('kin-version', '3')
+        assert client._internal_client._metadata[2] == ('desired-kin-version', '4')
+
     def test_create_account(self, grpc_channel, executor, app_index_client):
         private_key = PrivateKey.random()
         future = executor.submit(app_index_client.create_account, private_key)

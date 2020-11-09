@@ -232,16 +232,20 @@ class Client(BaseClient):
     :param kin_version: (optional) The version of Kin to use. Defaults to using Kin 3.
     :param default_commitment: (optional) The commitment requirement to use by default for Kin 4 Agora requests.
         Defaults to using Commitment.SINGLE.
+    :param desired_kin_version: (optional) A debugging parameter to force Agora to use a minimum kin version. Defaults
+        to None.
     """
 
     def __init__(
         self, env: Environment, app_index: int = 0, whitelist_key: Optional[PrivateKey] = None,
         grpc_channel: Optional[grpc.Channel] = None, endpoint: Optional[str] = None,
         retry_config: Optional[RetryConfig] = None, kin_version: Optional[int] = 3,
-        default_commitment: Optional[Commitment] = Commitment.SINGLE,
+        default_commitment: Optional[Commitment] = Commitment.SINGLE, desired_kin_version: Optional[int] = None,
     ):
         if kin_version not in _SUPPORTED_VERSIONS:
-            raise ValueError(f'{kin_version} is not a supported version of Kin')
+            raise ValueError(f'`kin_version` {kin_version} is not a supported version of Kin')
+        if desired_kin_version and desired_kin_version not in _SUPPORTED_VERSIONS:
+            raise ValueError(f'`desired_kin_version {desired_kin_version} is not a supported version of Kin')
 
         self.app_index = app_index
 
@@ -277,7 +281,8 @@ class Client(BaseClient):
             self.network_name = _NETWORK_NAMES[kin_version][env]
             self.whitelist_key = whitelist_key
 
-        self._internal_client = InternalClient(self._grpc_channel, self._internal_retry_strategies, self._kin_version)
+        self._internal_client = InternalClient(self._grpc_channel, self._internal_retry_strategies, self._kin_version,
+                                               desired_kin_version=desired_kin_version)
 
         self._default_commitment = default_commitment
 

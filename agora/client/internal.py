@@ -40,7 +40,10 @@ class InternalClient:
         gRPC directly). However, there is no stability guarantees between releases, or during a migration event.
         """
 
-    def __init__(self, grpc_channel: grpc.Channel, retry_strategies: List[Strategy], kin_version: int):
+    def __init__(
+        self, grpc_channel: grpc.Channel, retry_strategies: List[Strategy], kin_version: int,
+        desired_kin_version: Optional[int] = None,
+    ):
         self._account_stub_v3 = account_pb_grpc_v3.AccountStub(grpc_channel)
         self._transaction_stub_v3 = tx_pb_grpc_v3.TransactionStub(grpc_channel)
 
@@ -50,20 +53,37 @@ class InternalClient:
 
         self._retry_strategies = retry_strategies
         self._kin_version = kin_version
-        self._metadata = (
-            user_agent(VERSION),
-            ('kin-version', str(kin_version)),
-        )
+        self._desired_kin_version = desired_kin_version
+
+        if self._desired_kin_version:
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', str(self._kin_version)),
+                ('desired-kin-version', str(self._desired_kin_version)),
+            )
+        else:
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', str(self._kin_version)),
+            )
 
         # Currently only service config is cached, so limit to 1 entry
         self._response_cache = LRUCache(300, 1)
 
     def set_kin_version(self, kin_version: int):
         self._kin_version = kin_version
-        self._metadata = (
-            user_agent(VERSION),
-            ('kin-version', str(kin_version)),
-        )
+
+        if self._desired_kin_version:
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', str(self._kin_version)),
+                ('desired-kin-version', str(self._desired_kin_version)),
+            )
+        else:
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', str(self._kin_version)),
+            )
 
     def get_blockchain_version(self) -> int:
         """Get the blockchain version to use.
