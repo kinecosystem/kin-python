@@ -2,6 +2,7 @@ from enum import IntEnum
 from typing import List, Optional
 
 from agoraapi.common.v3 import model_pb2 as model_pb
+from agoraapi.common.v4 import model_pb2 as model_pb_v4
 from kin_base import stellarxdr
 from kin_base.stellarxdr import StellarXDR_const
 
@@ -11,7 +12,7 @@ class Error(Exception):
     """
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({", ".join(["{}={}".format(k, v) for k, v in self.__dict__.items()])})'
+        return f'{self.__class__.__name__}({", ".join([f"{k}={v}" for k, v in self.__dict__.items()])})'
 
     def __str__(self):
         return repr(self)
@@ -144,6 +145,11 @@ class TransactionRejectedError(Error):
     """
 
 
+class BlockchainVersionError(Error):
+    """Raised when Agora indicates that the current blockchain version is not supported.
+    """
+
+
 class InvoiceError(Error):
     """Raised when there was an issue with a provided invoice.
     """
@@ -151,6 +157,33 @@ class InvoiceError(Error):
     def __init__(self, errors: List[OperationInvoiceError], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.errors = errors
+
+
+class PayerRequiredError(Error):
+    """Raised when a transaction is missing a signature from its funder. This can occur if the service does not have a
+    subsidizer configured, or if it refuses to subsidize this specific transaction. The latter case can occur during
+    rate limiting situations. In this case, the client may either try at a later time, or attempt to fund the
+    transaction using a different account."""
+
+
+class NoSubsidizerError(Error):
+    """Raised when no subsidizer was provided for a transaction. This occurs if no subsidizer was made available by the
+    Agora service and none was provided by the method caller."""
+
+
+class AlreadySubmittedError(Error):
+    """Indicates that the transaction was already submitted.
+
+    If the client is retrying a submission due to a transient failure, then this can occur if the submission in a
+    previous attempt was successful. Otherwise, it may indicate that the transaction is indistinguishable from a
+    previous transaction (i.e. same block hash, sender, dest, and amount), and the client should use a different recent
+    blockhash and try again.
+    """
+
+
+class NoTokenAccountsError(Error):
+    """Indicates that no token accounts were resolved for the requested account ID.
+    """
 
 
 class TransactionErrors:
@@ -200,7 +233,7 @@ class TransactionErrors:
                     elif op_code == StellarXDR_const.CREATE_ACCOUNT_ALREADY_EXIST:
                         op_errors.append(AccountExistsError())
                     else:
-                        op_errors.append(Error("create account op failed with code: {}".format(op_code)))
+                        op_errors.append(Error(f'create account op failed with code: {op_code}'))
 
                 elif op_result.tr.type == StellarXDR_const.PAYMENT:
                     op_code = op_result.tr.paymentResult.code
@@ -215,21 +248,21 @@ class TransactionErrors:
                     elif op_code == StellarXDR_const.PAYMENT_NO_DESTINATION:
                         op_errors.append(DestinationDoesNotExistError())
                     else:
-                        op_errors.append(Error("payment op failed with code: {}".format(op_code)))
+                        op_errors.append(Error(f'payment op failed with code: {op_code}'))
 
                 else:
-                    op_errors.append(Error("op of type {} failed".format(op_result.tr.type)))
+                    op_errors.append(Error(f'op of type {op_result.tr.type} failed'))
 
-            return TransactionErrors(tx_error=Error("transaction failed"), op_errors=op_errors)
+            return TransactionErrors(tx_error=Error('transaction failed'), op_errors=op_errors)
 
         if tx_code == StellarXDR_const.txMISSING_OPERATION:
-            return TransactionErrors(tx_error=TransactionMalformedError("the transaction has no operations"))
+            return TransactionErrors(tx_error=TransactionMalformedError('the transaction has no operations'))
 
         if tx_code == StellarXDR_const.txBAD_SEQ:
             return TransactionErrors(tx_error=BadNonceError())
 
         if tx_code == StellarXDR_const.txBAD_AUTH:
-            return TransactionErrors(tx_error=InvalidSignatureError("missing signature or wrong network"))
+            return TransactionErrors(tx_error=InvalidSignatureError('missing signature or wrong network'))
 
         if tx_code == StellarXDR_const.txINSUFFICIENT_BALANCE:
             return TransactionErrors(tx_error=InsufficientBalanceError())
@@ -241,6 +274,20 @@ class TransactionErrors:
             return TransactionErrors(tx_error=InsufficientFeeError())
 
         if tx_code == StellarXDR_const.txBAD_AUTH_EXTRA:
-            return TransactionErrors(tx_error=InvalidSignatureError("unused signature attached"))
+            return TransactionErrors(tx_error=InvalidSignatureError('unused signature attached'))
 
-        return TransactionErrors(tx_error=Error("unknown result code: {}".format(tx_code)))
+        return TransactionErrors(tx_error=Error(f'unknown result code: {tx_code}'))
+
+    @staticmethod
+    def from_proto_error(tx_error: model_pb_v4.TransactionError) -> Optional['TransactionErrors']:
+        if tx_error.reason == model_pb_v4.TransactionError.NONE:
+            return None
+        if tx_error.reason == model_pb_v4.TransactionError.UNAUTHORIZED:
+            return TransactionErrors(tx_error=InvalidSignatureError('missing signature'))
+        if tx_error.reason == model_pb_v4.TransactionError.BAD_NONCE:
+            return TransactionErrors(tx_error=BadNonceError())
+        if tx_error.reason == model_pb_v4.TransactionError.INSUFFICIENT_FUNDS:
+            return TransactionErrors(tx_error=InsufficientBalanceError())
+        if tx_error.reason == model_pb_v4.TransactionError.INVALID_ACCOUNT:
+            return TransactionErrors(tx_error=AccountNotFoundError())
+        return TransactionErrors(tx_error=Error(f'unknown error: {tx_error}'))

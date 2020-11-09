@@ -7,16 +7,16 @@ class EarnResult:
     """The :class:`EarnResult <EarnResult>` object, which contains the result of a submitted earn.
 
     :param earn: The originally submitted earn.
-    :param tx_hash: (optional) The hash of the transaction that was submitted, if one was submitted for this earn. If
-        omitted, it indicates that no transaction was submitted for this earn.
+    :param transaction_id: (optional) The id of the transaction that was submitted, if one was submitted for this earn.
+        If omitted, it indicates that no transaction was submitted for this earn.
     :param error: (optional) An Exception indicating why the earn failed. The absence of an error does not indicate that
         the earn was submitted successfully, only that if it failed, either its transaction failed due to another earn,
         or it was not submitted at all.
     """
 
-    def __init__(self, earn: Earn, tx_hash: bytes = None, error: Optional[Exception] = None):
+    def __init__(self, earn: Earn, transaction_id: bytes = None, error: Optional[Exception] = None):
         self.earn = earn
-        self.tx_hash = tx_hash
+        self.transaction_id = transaction_id
         self.error = error
 
     def __eq__(self, other):
@@ -24,12 +24,12 @@ class EarnResult:
             return False
 
         return (self.earn == other.earn and
-                self.tx_hash == other.tx_hash and
+                self.transaction_id == other.transaction_id and
                 self.error == other.error)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'earn={self.earn!r}, tx_hash={self.tx_hash}, error={self.error!r})'
+               f'earn={self.earn!r}, tx_hash={self.transaction_id}, error={self.error!r})'
 
 
 class BatchEarnResult:

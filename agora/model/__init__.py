@@ -4,7 +4,7 @@ from .invoice import LineItem, Invoice, InvoiceList
 from .memo import AgoraMemo
 from .payment import Payment, ReadOnlyPayment
 from .result import EarnResult, BatchEarnResult
-from .transaction import TransactionData
+from .transaction import TransactionData, TransactionState
 from .transaction_type import TransactionType
 
 __all__ = [
@@ -19,5 +19,6 @@ __all__ = [
     'EarnResult',
     'BatchEarnResult',
     'TransactionData',
+    'TransactionState',
     'TransactionType',
 ]

@@ -1,5 +1,8 @@
 from typing import Optional
 
+from agoraapi.account.v3 import account_service_pb2 as account_pb
+from agoraapi.account.v4 import account_service_pb2 as account_pb_v4
+
 
 class AccountInfo:
     """The information of a Kin account.
@@ -13,3 +16,11 @@ class AccountInfo:
         self.account_id = account_id
         self.balance = balance
         self.sequence_number = sequence_number
+
+    @classmethod
+    def from_proto(cls, proto: account_pb.AccountInfo) -> 'AccountInfo':
+        return cls(proto.account_id.value, proto.balance, sequence_number=proto.sequence_number)
+
+    @classmethod
+    def from_proto_v4(cls, proto: account_pb_v4.AccountInfo) -> 'AccountInfo':
+        return cls(proto.account_id.value, proto.balance)

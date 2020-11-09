@@ -1,3 +1,6 @@
+import base64
+from typing import Optional
+
 from kin_base import memo, stellarxdr
 
 from agora.model.transaction_type import TransactionType
@@ -16,7 +19,7 @@ class AgoraMemo:
 
     def __init__(self, val: bytearray):
         if len(val) > 32:
-            raise ValueError("invalid memo length {}".format(len(val)))
+            raise ValueError(f'invalid memo length {len(val)}')
 
         self.val = val
 
@@ -43,17 +46,16 @@ class AgoraMemo:
         :return: an :class:`AgoraMemo <AgoraMemo>` object
         """
         if version < 0 or version > 7:
-            raise ValueError("invalid version")
+            raise ValueError('invalid version')
 
         if tx_type < 0 or tx_type > 2 ** 5 - 1:
-            raise ValueError("invalid transaction type")
+            raise ValueError('invalid transaction type')
 
         if app_index < 0 or app_index > 2 ** 16 - 1:
-            raise ValueError("invalid app index")
+            raise ValueError('invalid app index')
 
         if len(foreign_key) > 29:
-            raise ValueError("invalid foreign key length {}"
-                             .format(len(foreign_key)))
+            raise ValueError(f'invalid foreign key length {len(foreign_key)}')
 
         v = version & 0xFF
         t = tx_type & 0xFF
@@ -90,32 +92,47 @@ class AgoraMemo:
         return cls(val)
 
     @classmethod
-    def from_base_memo(cls, m: memo.Memo, strict: bool = False) -> 'AgoraMemo':
+    def from_base_memo(cls, m: memo.Memo, strict: Optional[bool] = False) -> 'AgoraMemo':
         """Instantiates and returns an :class:`AgoraMemo <AgoraMemo>` object from a :class:`Memo <kin_base.memo.Memo>`,
         provided it is a valid (or strictly valid) Agora memo.
 
         :param m: A :class:`Memo <kin_base.memo.Memo>`
-        :param strict: Dictates whether to strictly check validity of the memo or not
+        :param strict: (optional). Dictates whether to strictly check validity of the memo or not. Defaults to False.
         :return: An :class:`AgoraMemo <AgoraMemo>` object.
         """
         if not isinstance(m, memo.HashMemo):
-            raise ValueError("memo must be a HashMemo")
+            raise ValueError('memo must be a HashMemo')
 
         m = cls(m.memo_hash)
         if strict:
             if not m.is_valid_strict():
-                raise ValueError("memo not a valid Agora Memo")
+                raise ValueError('memo not a valid Agora Memo')
 
             return m
 
         if not m.is_valid():
-            raise ValueError("memo not a valid Agora Memo")
+            raise ValueError('memo not a valid Agora Memo')
 
         return m
 
     @classmethod
-    def from_xdr(cls, xdr: stellarxdr.Xdr.types.Memo, strict: bool = False) -> 'AgoraMemo':
+    def from_xdr(cls, xdr: stellarxdr.Xdr.types.Memo, strict: Optional[bool] = False) -> 'AgoraMemo':
         return cls.from_base_memo(memo.xdr_to_memo(xdr), strict=strict)
+
+    @classmethod
+    def from_b64_string(cls, s: str, strict: Optional[bool] = False) -> 'AgoraMemo':
+        raw = base64.b64decode(s)
+        m = cls(raw)
+        if strict:
+            if not m.is_valid_strict():
+                raise ValueError('memo not a valid Agora Memo')
+
+            return m
+
+        if not m.is_valid():
+            raise ValueError('memo not a valid Agora Memo')
+
+        return m
 
     def is_valid(self) -> bool:
         """Returns whether or not the memo is valid.

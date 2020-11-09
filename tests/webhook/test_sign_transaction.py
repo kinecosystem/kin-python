@@ -4,12 +4,15 @@ import pytest
 from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te
 
+from agora import solana
 from agora.client import Environment
 from agora.error import InvoiceErrorReason
 from agora.keys import PrivateKey
-from agora.model.invoice import Invoice
+from agora.model import AgoraMemo, TransactionType
+from agora.model.invoice import Invoice, InvoiceList
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
-from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_kin_2_payment_op
+from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_kin_2_payment_op, \
+    generate_keys
 
 
 class TestSignTransactionRequest:
@@ -64,14 +67,65 @@ class TestSignTransactionRequest:
         assert req.kin_version == data['kin_version']
         assert req.envelope.xdr() == envelope.xdr()
 
+    def test_from_json_kin_4(self):
+        il = model_pb2.InvoiceList(
+            invoices=[
+                model_pb2.Invoice(
+                    items=[
+                        model_pb2.Invoice.LineItem(title='title1', description='desc1', amount=50, sku=b'somesku')
+                    ]
+                )
+            ]
+        )
+
+        fk = InvoiceList.from_proto(il).get_sha_224_hash()
+        memo = AgoraMemo.new(1, TransactionType.P2P, 0, fk)
+
+        keys = [key.public_key for key in generate_keys(4)]
+        token_program = keys[3]
+        tx = solana.Transaction.new(
+            keys[0],
+            [
+                solana.memo_instruction(base64.b64encode(memo.val).decode('utf-8')),
+                solana.transfer(
+                    keys[1],
+                    keys[2],
+                    keys[3],
+                    20,
+                    token_program,
+                ),
+            ]
+        )
+
+        data = {
+            'kin_version': 4,
+            'transaction': base64.b64encode(tx.marshal()),
+            'invoice_list': base64.b64encode(il.SerializeToString()),
+        }
+
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
+        assert len(req.payments) == 1
+        assert req.payments[0].invoice == Invoice.from_proto(il.invoices[0])
+
+        assert req.kin_version == data['kin_version']
+        assert req.transaction == tx
+
     def test_from_json_invalid(self):
         # missing kin_version
         with pytest.raises(ValueError):
             SignTransactionRequest.from_json({'envelope_xdr': 'envelopexdr'}, Environment.TEST)
 
-        # missing envelope_xdr
+        # missing transaction on Kin 4
+        with pytest.raises(ValueError):
+            SignTransactionRequest.from_json({'kin_version': 4}, Environment.TEST)
+
+        # missing envelope_xdr on Kin 3
         with pytest.raises(ValueError):
             SignTransactionRequest.from_json({'kin_version': 3}, Environment.TEST)
+
+        # missing envelope_xdr on Kin 2
+        with pytest.raises(ValueError):
+            SignTransactionRequest.from_json({'kin_version': 2}, Environment.TEST)
 
 
 class TestSignTransactionResponse:

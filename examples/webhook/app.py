@@ -36,7 +36,7 @@ def sign_transaction():
     user_id = request.headers.get(APP_USER_ID_HEADER)
     user_passkey = request.headers.get(APP_USER_PASSKEY_HEADER)
 
-    logging.debug("Received sign transaction request for <'{}','{}'>".format(user_id, user_passkey))
+    logging.debug(f'Received sign transaction request for <`{user_id}`,`{user_passkey}`>')
 
     status_code, body = webhook_handler.handle_sign_transaction(
         _sign_transaction,
@@ -49,25 +49,25 @@ def sign_transaction():
 def _handle_events(received_events: List[Event]):
     for event in received_events:
         if not event.transaction_event:
-            logging.debug('received event: {}'.format(event))
+            logging.debug(f'received event: {event}')
             continue
 
-        logging.debug('transaction completed: {}'.format(event.transaction_event.tx_hash.hex()))
+        logging.debug(f'transaction completed: {event.transaction_event.tx_hash.hex()}')
 
 
 def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse):
     for idx, payment in enumerate(req.payments):
         # Double check that the transaction crafter isn't trying to impersonate us
-        if payment.sender == webhook_private_key.public_key():
-            logging.warning("rejecting: payment sender is webhook address")
+        if payment.sender == webhook_private_key.public_key:
+            logging.warning('rejecting: payment sender is webhook address')
             resp.reject()
             return
 
         # In this example, we don't want to sign transactions that are not sending Kin to the webhook account. Other
         # application use cases may not have this restrictions
-        if payment.dest != webhook_private_key.public_key():
-            logging.warning("rejecting: bad destination {}, expected {}".format(
-                payment.dest.stellar_address, webhook_private_key.public_key().stellar_address))
+        if payment.dest != webhook_private_key.public_key:
+            logging.warning(f'rejecting: bad destination {payment.destination.stellar_address}, '
+                            f'expected {webhook_private_key.public_key.stellar_address}')
             resp.mark_invoice_error(idx, InvoiceErrorReason.WRONG_DESTINATION)
 
         # If the transaction crafter submitted an invoice, make sure the line item SKUs are set.
@@ -78,15 +78,15 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
         if payment.invoice:
             for line_item in payment.invoice.items:
                 if not line_item.sku:
-                    logging.warning("rejecting: invoice missing sku")
+                    logging.warning('rejecting: invoice missing sku')
                     resp.mark_invoice_error(idx, InvoiceErrorReason.SKU_NOT_FOUND)
 
     tx_hash_str = req.get_tx_hash().hex()
     if resp.rejected:
-        logging.warning("transaction rejected: {} ({} payments)".format(tx_hash_str, len(req.payments)))
+        logging.warning(f'transaction rejected: {tx_hash_str} ({len(req.payments)} payments)')
         return
 
-    logging.debug("transaction approved: {} ({} payments)".format(tx_hash_str, len(req.payments)))
+    logging.debug(f'transaction approved: {tx_hash_str} ({len(req.payments)} payments)')
 
     # Note: This allows Agora to forward the transaction to the blockchain. However, it does not indicate that it will
     # be submitted successfully, or that the transaction will be successful. For example, the sender may have
@@ -94,9 +94,15 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
     #
     # Backends may keep track of the transaction themselves using SignTransactionRequest.get_tx_hash() and rely on
     # either the Events webhook or polling to get the transaction status.
-    resp.sign(webhook_private_key)
+    #
+    # Note: `sign` should only be called for Kin 3 transactions that an app wants to sign with their whitelisted
+    # account.
+    #
+    # Calling `sign` on a Kin 4 transaction is a no-op.
+    if req.kin_version == 3:
+        resp.sign(webhook_private_key)
     return
 
 
-if __name__ == "__main__":
-    app.run(port=int(os.environ.get("PORT", 8080)))
+if __name__ == '__main__':
+    app.run(port=int(os.environ.get('PORT', 8080)))

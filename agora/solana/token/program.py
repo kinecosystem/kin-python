@@ -158,14 +158,15 @@ class DecompiledTransfer(NamedTuple):
     amount: int
 
 
-def decompile_transfer(m: Message, index: int, token_program: PublicKey) -> DecompiledTransfer:
+def decompile_transfer(m: Message, index: int, token_program: Optional[PublicKey] = None) -> DecompiledTransfer:
     if index >= len(m.instructions):
         raise ValueError(f"instruction doesn't exist at {index}")
 
     i = m.instructions[index]
 
-    if m.accounts[i.program_index] != token_program:
-        raise ValueError('incorrect program')
+    if token_program:
+        if m.accounts[i.program_index] != token_program:
+            raise ValueError('incorrect program')
 
     if len(i.accounts) != 3:
         raise ValueError(f'invalid number of accounts: {len(i.accounts)}')
