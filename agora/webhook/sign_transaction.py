@@ -78,9 +78,23 @@ class SignTransactionRequest:
     def get_tx_hash(self) -> Optional[bytes]:
         """Returns the transaction hash of the transaction being signed, if it is a Stellar transaction.
 
+        This method has been deprecated. New code should use :method:`SignTransactionRequest.get_tx_id`
+        instead.
+
         :return: The transaction hash, in bytes, or None if no transaction envelope is available.
         """
         return self.envelope.hash_meta() if self.envelope else None
+
+    def get_tx_id(self) -> Optional[bytes]:
+        """Returns the transaction id of the transaction in the sign transaction request, if available. The id is
+        a 32-byte hash for Stellar transactions and a 64-byte hash for Solana transactions.
+
+        :return: The transaction id, in bytes, or None if the transaction id is not available.
+        """
+        if self.transaction:
+            return self.transaction.get_signature()
+        if self.envelope:
+            return self.envelope.hash_meta()
 
 
 class SignTransactionResponse:

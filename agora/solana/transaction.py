@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import base58
 
@@ -142,6 +142,25 @@ class Transaction:
         return (self.signatures == other.signatures and
                 self.message == other.message)
 
+    def __str__(self):
+        signatures = ''.join([f'  {base58.b58encode(s)}\n' for s in self.signatures])
+        account_ids = ''.join([f'    {a.to_base58()}\n' for a in self.message.accounts])
+        instructions = ''.join([
+            f'    {i}:\n'
+            f'      ProgramIndex: {instruction.program_index}\n'
+            f'      Accounts: {instruction.accounts}'
+            f'      Data: {instruction.data}' for i, instruction in enumerate(self.message.instructions)
+        ])
+
+        return f'Signatures:\n{signatures}' \
+               f'Message:\n' \
+               f'  Header:\n' \
+               f'    NumSignatures: {self.message.header.num_signatures}\n' \
+               f'    NumReadOnly: {self.message.header.num_read_only}\n' \
+               f'    NumReadOnlySigned: {self.message.header.num_read_only_signed}\n' \
+               f'  Accounts:\n{account_ids}' \
+               f'  Instructions:\n{instructions}'
+
     @classmethod
     def new(cls, payer: PublicKey, instructions: List[Instruction]):
         accounts = [AccountMeta(payer, is_signer=True, is_writable=True, is_payer=True)]
@@ -200,24 +219,14 @@ class Transaction:
 
         return cls(signatures, Message.unmarshal(b[offset:]))
 
-    def to_string(self) -> str:
-        signatures = ''.join([f'  {base58.b58encode(s)}\n' for s in self.signatures])
-        account_ids = ''.join([f'    {a.to_base58()}\n' for a in self.message.accounts])
-        instructions = ''.join([
-            f'    {i}:\n'
-            f'      ProgramIndex: {instruction.program_index}\n'
-            f'      Accounts: {instruction.accounts}'
-            f'      Data: {instruction.data}' for i, instruction in enumerate(self.message.instructions)
-        ])
+    def get_signature(self) -> Optional[bytes]:
+        """Returns the first (payer) Transaction signature
 
-        return f'Signatures:\n{signatures}' \
-               f'Message:\n' \
-               f'  Header:\n' \
-               f'    NumSignatures: {self.message.header.num_signatures}\n' \
-               f'    NumReadOnly: {self.message.header.num_read_only}\n' \
-               f'    NumReadOnlySigned: {self.message.header.num_read_only_signed}\n' \
-               f'  Accounts:\n{account_ids}' \
-               f'  Instructions:\n{instructions}'
+        :return: The signature, if present, or None
+        """
+        if len(self.signatures) > 0 and self.signatures[0] != bytes(SIGNATURE_LENGTH):
+            return self.signatures[0]
+        return None
 
     def set_blockhash(self, blockhash: bytes):
         self.message.recent_blockhash = blockhash

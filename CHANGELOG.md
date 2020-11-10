@@ -9,6 +9,7 @@
 - Add optional `subsidizer` parameter to `Payment`, `Client.create_account` and `Client.submit_earn_batch`
 - Add optional `sender_resolution` and `dest_resolution` parameters to `Client.submit_payment` and `Client.submit_earn_batch`
 - Rename `StellarData` to `StellarEvent`, `TransactionEvent.stellar_data` to `TransactionEvent.stellar_event`, and fix `TransactionEvent.from_json` to match production
+- Deprecate `SignTransactionRequest.get_tx_hash()` and replace with `SignTransactionRequest.get_tx_id()`.
 
 ## [0.3.3](https://github.com/kinecosystem/kin-python/releases/tag/0.3.3)
 - Add Kin 2 support

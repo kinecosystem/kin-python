@@ -110,6 +110,37 @@ class TestSignTransactionRequest:
         assert req.kin_version == data['kin_version']
         assert req.transaction == tx
 
+    def test_get_tx_id(self):
+        envelope = _generate_envelope()
+        data = {
+            'kin_version': 3,
+            'envelope_xdr': envelope.xdr(),
+        }
+
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
+        assert req.get_tx_id() == envelope.hash_meta()
+
+        keys = generate_keys(4)
+        public_keys = [key.public_key for key in keys]
+        token_program = public_keys[3]
+
+        tx = solana.Transaction.new(
+            public_keys[0],
+            [
+                solana.transfer(
+                    public_keys[1],
+                    public_keys[2],
+                    public_keys[3],
+                    20,
+                    token_program,
+                ),
+            ]
+        )
+        tx.sign([keys[0]])
+
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
+        assert req.get_tx_hash() == envelope.hash_meta()
+
     def test_from_json_invalid(self):
         # missing kin_version
         with pytest.raises(ValueError):
