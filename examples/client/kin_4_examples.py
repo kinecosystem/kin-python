@@ -1,5 +1,4 @@
 import argparse
-
 import base58
 
 from agora.client import Client, Environment
@@ -28,8 +27,8 @@ args = vars(ap.parse_args())
 
 client = Client(Environment.TEST, 0, kin_version=4)
 
-sender = PrivateKey(base58.b58decode(args['sender']))
-sender_addr = base58.b58encode(sender.public_key.raw).decode('utf-8')
+sender = PrivateKey.from_base58(args['sender'])
+sender_addr = sender.public_key.to_base58()
 
 try:
     client.create_account(sender)
@@ -45,7 +44,7 @@ airdrop_resp = client._internal_client.request_airdrop(sender.public_key, int(3e
 print(f'funded {sender_addr}')
 
 # use airdrop source as destination for the following transactions
-airdrop_source = PublicKey(base58.b58decode("DemXVWQ9DXYsGFpmjFXxki3PE1i3VoHQtqxXQFx38pmU"))
+airdrop_source = PublicKey.from_base58("DemXVWQ9DXYsGFpmjFXxki3PE1i3VoHQtqxXQFx38pmU")
 
 # Send a payment of 1 Kin
 tx_id = submit_payment(Payment(sender, airdrop_source, TransactionType.NONE, int(1e5)))

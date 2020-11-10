@@ -2,8 +2,6 @@
 from enum import IntEnum
 from typing import NamedTuple, Optional
 
-import base58
-
 from agora.keys import PublicKey, ED25519_PUB_KEY_SIZE
 from agora.solana.instruction import Instruction, AccountMeta
 from agora.solana.transaction import Message
@@ -14,7 +12,7 @@ ACCOUNT_SIZE = 165
 # RentSysVar points to the system variable "Rent"
 #
 # Source: https://github.com/solana-labs/solana/blob/f02a78d8fff2dd7297dc6ce6eb5a68a3002f5359/sdk/src/sysvar/rent.rs#L11
-_RENT_SYS_VAR = PublicKey(base58.b58decode('SysvarRent111111111111111111111111111111111'))
+_RENT_SYS_VAR = PublicKey.from_base58('SysvarRent111111111111111111111111111111111')
 
 
 class Command(IntEnum):

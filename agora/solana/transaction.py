@@ -202,7 +202,7 @@ class Transaction:
 
     def to_string(self) -> str:
         signatures = ''.join([f'  {base58.b58encode(s)}\n' for s in self.signatures])
-        account_ids = ''.join([f'    {base58.b58encode(a)}\n' for a in self.message.accounts])
+        account_ids = ''.join([f'    {a.to_base58()}\n' for a in self.message.accounts])
         instructions = ''.join([
             f'    {i}:\n'
             f'      ProgramIndex: {instruction.program_index}\n'

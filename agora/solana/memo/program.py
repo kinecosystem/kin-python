@@ -1,14 +1,12 @@
 from typing import NamedTuple
 
-import base58
-
 from agora.keys import PublicKey
 from agora.solana.instruction import Instruction
 from agora.solana.transaction import Message
 
 # The address of the memo program that should be used.
 # todo: lock this in, or make configurable
-PROGRAM_KEY = PublicKey(base58.b58decode('Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo'))
+PROGRAM_KEY = PublicKey.from_base58('Memo1UhkJRfHyvLMcVucJwxXeuD728EqVDDwQDxFMNo')
 
 
 # Reference: https://github.com/solana-labs/solana-program-library/blob/master/memo/program/src/entrypoint.rs

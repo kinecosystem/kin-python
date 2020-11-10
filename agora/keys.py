@@ -1,5 +1,6 @@
 import os
 
+import base58
 from kin_base import utils as kin_utils
 from nacl import signing
 
@@ -25,6 +26,15 @@ class PublicKey:
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
                f'public_key={bytes(self._verify_key)})'
+
+    @classmethod
+    def from_base58(cls, address: str) -> 'PublicKey':
+        """Decodes the provided base58-encoded public address and returns a PublicKey object.
+
+        :param address: the base58 encoded public address
+        :return: a PublicKey object.
+        """
+        return cls(base58.b58decode(address))
 
     @classmethod
     def from_string(cls, address: str) -> 'PublicKey':
@@ -56,6 +66,13 @@ class PublicKey:
         :return: bytes
         """
         return bytes(self._verify_key)
+
+    def to_base58(self) -> str:
+        """Returns the base58-encoded form of this public key.
+
+        :return: the string base58-encoded public key
+        """
+        return base58.b58encode(self.raw).decode('utf-8')
 
     def verify(self, data: bytes, signature: bytes):
         """Verify the provided data and signature match this keypair's public key.
@@ -91,6 +108,15 @@ class PrivateKey:
         :return: A PrivateKey object.
         """
         return cls(os.urandom(32))
+
+    @classmethod
+    def from_base58(cls, seed: str) -> 'PrivateKey':
+        """Decodes the provided base58-encoded seed and returns a PrivateKey object.
+
+        :param seed: the base58-encoded seed
+        :return: a PrivateKey object.
+        """
+        return cls(base58.b58decode(seed))
 
     @classmethod
     def from_string(cls, seed: str) -> 'PrivateKey':
@@ -130,6 +156,13 @@ class PrivateKey:
         :return: a :class:`PublicKey <PublicKey>`
         """
         return PublicKey(bytes(self._signing_key.verify_key))
+
+    def to_base58(self) -> str:
+        """Returns the base58-encoded form of the seed.
+
+        :return: the string base58-encoded seed.
+        """
+        return base58.b58encode(self.raw).decode('utf-8')
 
     def sign(self, data: bytes) -> bytes:
         """Sign the provided data.

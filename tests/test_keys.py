@@ -47,3 +47,8 @@ class TestKeys:
 
         with pytest.raises(ValueError):
             PrivateKey.from_string(address)  # not a seed
+
+    def test_base58_roundtrip(self):
+        priv = PrivateKey.random()
+        assert PrivateKey.from_base58(priv.to_base58()) == priv
+        assert priv.public_key.from_base58(priv.public_key.to_base58()) == priv.public_key
