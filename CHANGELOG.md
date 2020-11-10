@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [0.4.0](https://github.com/kinecosystem/kin-python/releases/tag/0.4.0)
 - Add Kin 4 support
 - Move `agora.model.keys` to `agora.keys`
 - Rename `tx_hash` to `tx_id` in `Client.get_transaction`, `TransactionData`, `EarnResult`, and 'TransactionEvent'
