@@ -4,12 +4,13 @@ import pytest
 from agoraapi.common.v3 import model_pb2
 from kin_base import transaction_envelope as te
 
-from agora import solana
+from agora import solana, KIN_2_TEST_NETWORK
 from agora.client import Environment
 from agora.error import InvoiceErrorReason
 from agora.keys import PrivateKey
 from agora.model import AgoraMemo, TransactionType
 from agora.model.invoice import Invoice, InvoiceList
+from agora.utils import kin_2_envelope_from_xdr
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_kin_2_payment_op, \
     generate_keys
@@ -120,6 +121,15 @@ class TestSignTransactionRequest:
         req = SignTransactionRequest.from_json(data, Environment.TEST)
         assert req.get_tx_id() == envelope.hash_meta()
 
+        envelope = _generate_kin_2_envelope()
+        data = {
+            'kin_version': 2,
+            'envelope_xdr': envelope.xdr(),
+        }
+
+        req = SignTransactionRequest.from_json(data, Environment.TEST)
+        assert req.get_tx_id() == envelope.hash_meta()
+
         keys = generate_keys(4)
         public_keys = [key.public_key for key in keys]
         token_program = public_keys[3]
@@ -224,4 +234,4 @@ def _generate_kin_2_envelope():
     operations = [gen_kin_2_payment_op(acc2)]
     envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations,
                                        gen_text_memo(b'somememo'))
-    return te.TransactionEnvelope.from_xdr(base64.b64encode(envelope_xdr))
+    return kin_2_envelope_from_xdr(KIN_2_TEST_NETWORK, base64.b64encode(envelope_xdr))
