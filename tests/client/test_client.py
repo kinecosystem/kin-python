@@ -33,7 +33,7 @@ from agora.solana.memo import decompile_memo
 from agora.solana.system import decompile_create_account
 from agora.solana.token import decompile_initialize_account, decompile_transfer
 from agora.solana.transaction import HASH_LENGTH, Transaction, SIGNATURE_LENGTH
-from agora.utils import partition, kin_to_quarks, quarks_to_kin, kin_2_envelope_from_xdr
+from agora.utils import partition, kin_to_quarks, quarks_to_kin, envelope_from_xdr
 from agora.utils import user_agent
 from agora.version import VERSION
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, gen_payment_op_result, gen_result_xdr, \
@@ -2162,7 +2162,7 @@ class TestAgoraClient:
         envelope_xdr: bytes, signers: List[PrivateKey], tx_source: PrivateKey, base_fee: int, sequence: int,
         tx_memo: memo.Memo, payment: Payment
     ):
-        envelope = kin_2_envelope_from_xdr(_NETWORK_NAMES[2][Environment.TEST], base64.b64encode(envelope_xdr))
+        envelope = envelope_from_xdr(_NETWORK_NAMES[2][Environment.TEST], base64.b64encode(envelope_xdr))
         operations = envelope.tx.operations
 
         TestAgoraClient._assert_envelope_properties(envelope, signers, tx_source, base_fee, sequence, tx_memo)
@@ -2186,7 +2186,7 @@ class TestAgoraClient:
         envelope_xdr: bytes, signers: List[PrivateKey], tx_source: PrivateKey,
         base_fee: int, sequence: int, tx_memo: memo.Memo, sender: PrivateKey, earns: List[Earn]
     ):
-        envelope = kin_2_envelope_from_xdr(_NETWORK_NAMES[2][Environment.TEST], base64.b64encode(envelope_xdr))
+        envelope = envelope_from_xdr(_NETWORK_NAMES[2][Environment.TEST], base64.b64encode(envelope_xdr))
         operations = envelope.tx.operations
 
         TestAgoraClient._assert_envelope_properties(envelope, signers, tx_source, base_fee * len(operations), sequence,

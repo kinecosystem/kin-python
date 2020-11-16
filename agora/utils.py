@@ -55,8 +55,8 @@ def quarks_to_kin(quarks: int) -> str:
     return str(kin)
 
 
-def kin_2_envelope_from_xdr(network_id: str, xdr: bytes) -> te.TransactionEnvelope:
-    """Create a new TransactionEnvelope from a Kin 2 XDR string.
+def envelope_from_xdr(network_id: str, xdr: bytes) -> te.TransactionEnvelope:
+    """Create a new TransactionEnvelope from an XDR string.
 
     :param network_id: The network ID to instantiate the TransactionEnvelope with.
     :param xdr: The XDR string

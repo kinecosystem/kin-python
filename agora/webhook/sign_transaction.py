@@ -10,7 +10,7 @@ from agora.client import Environment
 from agora.error import InvoiceErrorReason, OperationInvoiceError
 from agora.keys import PrivateKey
 from agora.model import InvoiceList, ReadOnlyPayment
-from agora.utils import kin_2_envelope_from_xdr
+from agora.utils import envelope_from_xdr
 
 
 class SignTransactionRequest:
@@ -68,9 +68,10 @@ class SignTransactionRequest:
 
             if kin_version == 2:
                 network_id = KIN_2_PROD_NETWORK if environment == Environment.PRODUCTION else KIN_2_TEST_NETWORK
-                env = kin_2_envelope_from_xdr(network_id, envelope_xdr)
+                env = envelope_from_xdr(network_id, envelope_xdr)
             else:
-                env = te.TransactionEnvelope.from_xdr(envelope_xdr)
+                network_id = 'PUBLIC' if environment == Environment.PRODUCTION else 'TESTNET'
+                env = envelope_from_xdr(network_id, envelope_xdr)
 
             return cls(ReadOnlyPayment.payments_from_envelope(env, il, kin_version=kin_version), kin_version,
                        envelope=env)

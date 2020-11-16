@@ -10,7 +10,7 @@ from agora.error import InvoiceErrorReason
 from agora.keys import PrivateKey
 from agora.model import AgoraMemo, TransactionType
 from agora.model.invoice import Invoice, InvoiceList
-from agora.utils import kin_2_envelope_from_xdr
+from agora.utils import envelope_from_xdr
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo, gen_kin_2_payment_op, \
     generate_keys
@@ -234,4 +234,4 @@ def _generate_kin_2_envelope():
     operations = [gen_kin_2_payment_op(acc2)]
     envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations,
                                        gen_text_memo(b'somememo'))
-    return kin_2_envelope_from_xdr(KIN_2_TEST_NETWORK, base64.b64encode(envelope_xdr))
+    return envelope_from_xdr(KIN_2_TEST_NETWORK, base64.b64encode(envelope_xdr))

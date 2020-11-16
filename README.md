@@ -170,9 +170,10 @@ Only apps that have been assigned an [app index](https://docs.kin.org/app-regist
 ### Initialization
 The `WebhookHandler` must be instantiated with the app's configured [webhook secret](https://docs.kin.org/agora/webhook#authentication).
 ```python
+from agora.client import Environment
 from agora.webhook.handler import WebhookHandler
 
-webhook_handler = WebhookHandler('mysecret')
+webhook_handler = WebhookHandler(Environment.TEST, 'mysecret')
 ```  
 
 ### Usage
@@ -197,10 +198,11 @@ This function can be used with `WebhookHandler.handle_events` inside your events
 ```python
 from typing import List
 
+from agora.client import Environment
 from agora.webhook import WebhookHandler, AGORA_HMAC_HEADER
 from agora.webhook.events import Event
 
-webhook_handler = WebhookHandler('mysecret')
+webhook_handler = WebhookHandler(Environment.TEST, 'mysecret')
 
 
 def process_events(events: List[Event]) -> None:
@@ -238,10 +240,11 @@ def verify_request(req: SignTransactionRequest, resp: SignTransactionResponse) -
 
 This function can be used with `WebhookHandler.sign_transaction` inside your sign transaction endpoint logic as follows:
 ```python
+from agora.client import Environment
 from agora.webhook import WebhookHandler, AGORA_HMAC_HEADER
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
 
-webhook_handler = WebhookHandler('mysecret')
+webhook_handler = WebhookHandler(Environment.TEST, 'mysecret')
 
 def verify_request(req: SignTransactionRequest, resp: SignTransactionResponse) -> None:
     # verify the transaction inside `req`, and modify `resp` as needed (e.g. by calling `sign`).

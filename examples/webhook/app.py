@@ -4,6 +4,7 @@ from typing import List
 
 from flask import Flask, request
 
+from agora.client import Environment
 from agora.error import InvoiceErrorReason
 from agora.keys import PrivateKey
 from agora.webhook.events import Event
@@ -18,7 +19,7 @@ webhook_secret = os.environ.get("WEBHOOK_SECRET")
 webhook_seed = os.environ.get("WEBHOOK_SEED")
 webhook_private_key = PrivateKey.from_string(webhook_seed)
 
-webhook_handler = WebhookHandler(webhook_secret)
+webhook_handler = WebhookHandler(Environment.TEST, webhook_secret)
 
 
 @app.route('/events', methods=['POST'])
