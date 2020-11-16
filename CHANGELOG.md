@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.4.1](https://github.com/kinecosystem/kin-python/releases/tag/0.4.1)
+- Bugfix: fix production Kin 3 envelope parsing in `SignTransactionRequest.from_json`
+
 ## [0.4.0](https://github.com/kinecosystem/kin-python/releases/tag/0.4.0)
 - Add Kin 4 support
 - Move `agora.model.keys` to `agora.keys`
