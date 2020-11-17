@@ -313,6 +313,9 @@ class Client(BaseClient):
         return retry(self._nonce_retry_strategies, _submit_create_solana_account)
 
     def get_transaction(self, tx_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
+        if self._kin_version < 4:
+            return self._internal_client.get_stellar_transaction(tx_id)
+
         commitment = commitment if commitment else self._default_commitment
         return self._internal_client.get_transaction(tx_id, commitment)
 

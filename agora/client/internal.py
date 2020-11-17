@@ -1,3 +1,4 @@
+import base64
 from typing import List, Optional
 
 import grpc
@@ -8,13 +9,14 @@ from agoraapi.common.v3 import model_pb2 as model_pb_v3
 from agoraapi.common.v4 import model_pb2 as model_pb_v4
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb_v3, transaction_service_pb2_grpc as tx_pb_grpc_v3
 from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4, transaction_service_pb2_grpc as tx_pb_grpc_v4
+from kin_base import transaction_envelope as te
 
 from agora.cache.cache import LRUCache
 from agora.error import BlockchainVersionError, AccountExistsError, AccountNotFoundError, TransactionRejectedError, \
     TransactionErrors, Error, InsufficientBalanceError, PayerRequiredError, NoSubsidizerError, AlreadySubmittedError, \
     BadNonceError
 from agora.keys import PrivateKey, PublicKey
-from agora.model import AccountInfo, TransactionData, TransactionState, InvoiceList
+from agora.model import AccountInfo, TransactionData, TransactionState, InvoiceList, ReadOnlyPayment
 from agora.retry import Strategy, retry
 from agora.solana import Transaction, token, system
 from agora.solana.commitment import Commitment
@@ -144,30 +146,33 @@ class InternalClient:
         resp = retry(self._retry_strategies, _get_account)
         return AccountInfo.from_proto(resp.account_info)
 
-    def get_transaction(
-        self, tx_id: bytes, commitment: Optional[Commitment] = Commitment.SINGLE
-    ) -> TransactionData:
-        """Get a transaction from Agora.
+    def get_stellar_transaction(self, tx_hash: bytes) -> TransactionData:
+        """Get a Stellar transaction from Agora.
 
-        :param tx_id: The id of the transaction, in bytes.
-        :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use. Only applicable for
-            Solana transactions.
+        :param tx_hash: The hash of the transaction
         :return: A :class:`TransactionData <agora.model.transaction.TransactionData>` object.
         """
 
         def _get_transaction():
-            req = tx_pb_v4.GetTransactionRequest(
-                transaction_id=model_pb_v4.TransactionId(value=tx_id),
-                commitment=commitment.to_proto(),
-            )
-            return self._transaction_stub_v4.GetTransaction(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
+            return self._transaction_stub_v3.GetTransaction(tx_pb_v3.GetTransactionRequest(
+                transaction_hash=model_pb_v3.TransactionHash(
+                    value=tx_hash
+                )
+            ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
         resp = retry(self._retry_strategies, _get_transaction)
 
-        if resp.item.transaction_id.value:
-            return TransactionData.from_proto(resp.item, resp.state)
+        if resp.state is tx_pb_v3.GetTransactionResponse.State.UNKNOWN:
+            return TransactionData(tx_hash, TransactionState.UNKNOWN)
 
-        return TransactionData(tx_id, TransactionState.from_proto_v4(resp.state))
+        if resp.state == tx_pb_v3.GetTransactionResponse.State.SUCCESS:
+            data = TransactionData(tx_hash, TransactionState.SUCCESS)
+            env = te.TransactionEnvelope.from_xdr(base64.b64encode(resp.item.envelope_xdr))
+            data.payments = ReadOnlyPayment.payments_from_envelope(env, resp.item.invoice_list,
+                                                                   kin_version=self._kin_version)
+            return data
+
+        raise Error(f'Unexpected transaction state from Agora: {resp.state}')
 
     def submit_stellar_transaction(
         self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None
@@ -304,6 +309,31 @@ class InternalClient:
             return AccountInfo.from_proto_v4(resp.account_info)
 
         return retry(self._retry_strategies, _get)
+
+    def get_transaction(
+        self, tx_id: bytes, commitment: Optional[Commitment] = Commitment.SINGLE
+    ) -> TransactionData:
+        """Get a transaction from Agora.
+
+        :param tx_id: The id of the transaction, in bytes.
+        :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use. Only applicable for
+            Solana transactions.
+        :return: A :class:`TransactionData <agora.model.transaction.TransactionData>` object.
+        """
+
+        def _get_transaction():
+            req = tx_pb_v4.GetTransactionRequest(
+                transaction_id=model_pb_v4.TransactionId(value=tx_id),
+                commitment=commitment.to_proto(),
+            )
+            return self._transaction_stub_v4.GetTransaction(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
+
+        resp = retry(self._retry_strategies, _get_transaction)
+
+        if resp.item.transaction_id.value:
+            return TransactionData.from_proto(resp.item, resp.state)
+
+        return TransactionData(tx_id, TransactionState.from_proto_v4(resp.state))
 
     def submit_solana_transaction(
         self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None,

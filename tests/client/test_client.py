@@ -37,7 +37,7 @@ from agora.utils import partition, kin_to_quarks, quarks_to_kin, envelope_from_x
 from agora.utils import user_agent
 from agora.version import VERSION
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, gen_payment_op_result, gen_result_xdr, \
-    gen_hash_memo, gen_kin_2_payment_op
+    gen_hash_memo, gen_kin_2_payment_op, generate_keys
 
 _config_with_retry = RetryConfig(max_retries=2, min_delay=0.1, max_delay=2, max_nonce_refreshes=0)
 _config_with_nonce_retry = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=2)
@@ -252,7 +252,7 @@ class TestAgoraClient:
         future = executor.submit(app_index_client.get_transaction, tx_hash)
 
         md, request, rpc = grpc_channel.take_unary_unary(
-            tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
+            tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
         )
 
         # Create full response
@@ -275,24 +275,16 @@ class TestAgoraClient:
         operations = [gen_payment_op(acc2, amount=15)]
         envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, hash_memo)
 
-        history_item = tx_pb_v4.HistoryItem(
-            transaction_id=model_pb_v4.TransactionId(value=tx_hash),
-            cursor=tx_pb_v4.Cursor(value=b'cursor1'),
-            stellar_transaction=model_pb_v4.StellarTransaction(
-                result_xdr=result_xdr,
-                envelope_xdr=envelope_xdr,
-            ),
-            payments=[
-                tx_pb_v4.HistoryItem.Payment(
-                    source=model_pb_v4.SolanaAccountId(value=acc1.ed25519),
-                    destination=model_pb_v4.SolanaAccountId(value=acc2.ed25519),
-                    amount=15,
-                ),
-            ],
+        history_item = tx_pb.HistoryItem(
+            hash=model_pb.TransactionHash(value=tx_hash),
+            result_xdr=result_xdr,
+            envelope_xdr=envelope_xdr,
+            cursor=tx_pb.Cursor(value=b'cursor1'),
             invoice_list=il,
         )
-        resp = tx_pb_v4.GetTransactionResponse(
-            state=tx_pb_v4.GetTransactionResponse.State.SUCCESS,
+        resp = tx_pb.GetTransactionResponse(
+            state=tx_pb.GetTransactionResponse.State.SUCCESS,
+            ledger=10,
             item=history_item,
         )
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
@@ -312,14 +304,14 @@ class TestAgoraClient:
         assert (payment1.invoice.to_proto().SerializeToString() == il.invoices[0].SerializeToString())
         assert not payment1.memo
 
-        assert request.transaction_id.value == tx_hash
+        assert request.transaction_hash.value == tx_hash
 
     def test_get_transaction_kin_2(self, grpc_channel, executor, kin_2_client):
         tx_hash = b'somehash'
         future = executor.submit(kin_2_client.get_transaction, tx_hash)
 
         md, request, rpc = grpc_channel.take_unary_unary(
-            tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
+            tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
         )
 
         # Create full response
@@ -342,24 +334,16 @@ class TestAgoraClient:
         operations = [gen_kin_2_payment_op(acc2, raw_amount=1500)]  # equivalent to 15 quarks
         envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, hash_memo)
 
-        history_item = tx_pb_v4.HistoryItem(
-            transaction_id=model_pb_v4.TransactionId(value=tx_hash),
-            cursor=tx_pb_v4.Cursor(value=b'cursor1'),
-            stellar_transaction=model_pb_v4.StellarTransaction(
-                result_xdr=result_xdr,
-                envelope_xdr=envelope_xdr,
-            ),
-            payments=[
-                tx_pb_v4.HistoryItem.Payment(
-                    source=model_pb_v4.SolanaAccountId(value=acc1.ed25519),
-                    destination=model_pb_v4.SolanaAccountId(value=acc2.ed25519),
-                    amount=15,
-                ),
-            ],
+        history_item = tx_pb.HistoryItem(
+            hash=model_pb.TransactionHash(value=tx_hash),
+            result_xdr=result_xdr,
+            envelope_xdr=envelope_xdr,
+            cursor=tx_pb.Cursor(value=b'cursor1'),
             invoice_list=il,
         )
-        resp = tx_pb_v4.GetTransactionResponse(
-            state=tx_pb_v4.GetTransactionResponse.State.SUCCESS,
+        resp = tx_pb.GetTransactionResponse(
+            state=tx_pb.GetTransactionResponse.State.SUCCESS,
+            ledger=10,
             item=history_item,
         )
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
@@ -379,17 +363,17 @@ class TestAgoraClient:
         assert (payment1.invoice.to_proto().SerializeToString() == il.invoices[0].SerializeToString())
         assert not payment1.memo
 
-        assert request.transaction_id.value == tx_hash
+        assert request.transaction_hash.value == tx_hash
 
     def test_get_transaction_unknown(self, grpc_channel, executor, app_index_client):
         tx_hash = b'somehash'
         future = executor.submit(app_index_client.get_transaction, tx_hash)
 
         md, request, rpc = grpc_channel.take_unary_unary(
-            tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
+            tx_pb.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
         )
 
-        resp = tx_pb_v4.GetTransactionResponse(state=tx_pb.GetTransactionResponse.State.UNKNOWN)
+        resp = tx_pb.GetTransactionResponse(state=tx_pb.GetTransactionResponse.State.UNKNOWN)
         rpc.terminate(resp, (), grpc.StatusCode.OK, '')
 
         tx_data = future.result()
@@ -397,7 +381,7 @@ class TestAgoraClient:
         assert tx_data.transaction_state == TransactionState.UNKNOWN
 
         self._assert_user_agent(md)
-        assert request.transaction_id.value == tx_hash
+        assert request.transaction_hash.value == tx_hash
 
     def test_get_balance(self, grpc_channel, executor, app_index_client):
         private_key = PrivateKey.random()
@@ -1390,6 +1374,84 @@ class TestAgoraClient:
         assert len(create_reqs) == _config_with_nonce_retry.max_nonce_refreshes + 1
         with pytest.raises(BadNonceError):
             future.result()
+
+    def test_kin_4_get_transaction(self, grpc_channel, executor, kin_4_client):
+        source, dest = [key.public_key for key in generate_keys(2)]
+        transaction_id = b'someid'
+        future = executor.submit(kin_4_client.get_transaction, transaction_id)
+
+        agora_memo = AgoraMemo.new(1, TransactionType.SPEND, 0, b'')
+        tx = Transaction.new(PrivateKey.random().public_key, [
+            memo_instruction(base64.b64encode(agora_memo.val).decode('utf-8')),
+            transfer(source, dest, PrivateKey.random().public_key, 100, _token_program),
+        ])
+
+        resp = tx_pb_v4.GetTransactionResponse(
+            state=tx_pb_v4.GetTransactionResponse.State.SUCCESS,
+            item=tx_pb_v4.HistoryItem(
+                transaction_id=model_pb_v4.TransactionId(
+                    value=transaction_id,
+                ),
+                solana_transaction=model_pb_v4.Transaction(
+                    value=tx.marshal(),
+                ),
+                payments=[
+                    tx_pb_v4.HistoryItem.Payment(
+                        source=model_pb_v4.SolanaAccountId(value=source.raw),
+                        destination=model_pb_v4.SolanaAccountId(value=dest.raw),
+                        amount=100,
+                    )
+                ],
+                invoice_list=model_pb.InvoiceList(
+                    invoices=[
+                        model_pb.Invoice(
+                            items=[
+                                model_pb.Invoice.LineItem(title='t1', amount=15),
+                            ]
+                        ),
+                    ]
+                )
+            ),
+        )
+
+        md, req, rpc = grpc_channel.take_unary_unary(
+            tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
+        )
+        rpc.terminate(resp, (), grpc.StatusCode.OK, '')
+
+        assert req.transaction_id.value == transaction_id
+
+        tx_data = future.result()
+        assert tx_data.tx_id == transaction_id
+        assert tx_data.transaction_state == TransactionState.SUCCESS
+        assert len(tx_data.payments) == 1
+        assert not tx_data.error
+
+        p = tx_data.payments[0]
+        assert p.sender.raw == source.raw
+        assert p.destination.raw == dest.raw
+        assert p.tx_type == TransactionType.SPEND
+        assert p.quarks == 100
+        assert p.invoice.to_proto().SerializeToString() == resp.item.invoice_list.invoices[0].SerializeToString()
+        assert not p.memo
+
+    def test_kin_4_get_transaction_unknown(self, grpc_channel, executor, kin_4_client):
+        transaction_id = b'someid'
+        future = executor.submit(kin_4_client.get_transaction, transaction_id)
+
+        md, request, rpc = grpc_channel.take_unary_unary(
+            tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetTransaction']
+        )
+
+        resp = tx_pb_v4.GetTransactionResponse(state=tx_pb.GetTransactionResponse.State.UNKNOWN)
+        rpc.terminate(resp, (), grpc.StatusCode.OK, '')
+
+        tx_data = future.result()
+        assert tx_data.tx_id == transaction_id
+        assert tx_data.transaction_state == TransactionState.UNKNOWN
+
+        self._assert_user_agent(md)
+        assert request.transaction_id.value == transaction_id
 
     def test_kin_4_submit_payment_invalid(self, grpc_channel, executor, kin_4_client, kin_4_no_app_client):
         sender = PrivateKey.random()
