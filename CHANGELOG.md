@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.4.3](https://github.com/kinecosystem/kin-python/releases/tag/0.4.3)
+- Fix uploaded wheel to remove `agora/model/keys.py` 
+
 ## [0.4.2](https://github.com/kinecosystem/kin-python/releases/tag/0.4.2)
 - Call v3 `GetTransaction` API for Kin 2 & 3
 
