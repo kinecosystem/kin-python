@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.4.2](https://github.com/kinecosystem/kin-python/releases/tag/0.4.2)
+- Call v3 `GetTransaction` API for Kin 2 & 3
+
 ## [0.4.1](https://github.com/kinecosystem/kin-python/releases/tag/0.4.1)
 - Bugfix: fix production Kin 3 envelope parsing in `SignTransactionRequest.from_json`
 
