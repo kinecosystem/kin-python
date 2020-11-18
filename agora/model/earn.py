@@ -7,7 +7,7 @@ from agora.keys import PublicKey, PrivateKey
 class Earn:
     """The :class:`Earn <Earn>` object, which represents an earn payment that will get submitted.
 
-    :param destination: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account the earn will be sent to.
+    :param destination: The :class:`PublicKey <agora.keys.PublicKey>` of the account the earn will be sent to.
     :param quarks: The amount being sent.
     :param invoice: (optional) An :class:`Invoice <agora.model.invoice.Invoice>` object to associate with this earn.
     """
@@ -34,9 +34,9 @@ class EarnBatch:
     """The :class:`EarnBatch <EarnBatch>` object, which represents a batch of Earn payments coming from a single
     sender.
 
-    :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the sender
+    :param sender: The :class:`PrivateKey <agora.keys.PrivateKey>` of the sender
     :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-    :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of a channel account to use as
+    :param channel: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of a channel account to use as
         the transaction source. If not set, the `sender` will be used as the source.
     :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
         will be applied.

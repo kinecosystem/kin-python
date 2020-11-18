@@ -23,8 +23,8 @@ class TokenAccountResolver:
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
         """Resolve the provided public key to its token accounts.
 
-        :param public_key: the :class:`PublicKey <agora.model.keys.PublicKey>` of the owner.
-        :return: a list of :class:`PublicKey <agora.model.keys.PublicKey>` objects.
+        :param public_key: the :class:`PublicKey <agora.keys.PublicKey>` of the owner.
+        :return: a list of :class:`PublicKey <agora.keys.PublicKey>` objects.
         """
         cached = self._get_from_cache(public_key)
         if cached:

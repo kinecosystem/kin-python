@@ -107,7 +107,7 @@ class BaseClient:
                        subsidizer: Optional[PrivateKey] = None):
         """Creates a new Kin account.
 
-        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to create
+        :param private_key: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to create
         :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
         :param subsidizer: (optional) The subsidizer to use for the create account transaction. The subsidizer will be
             used both as the payer of the transaction and will also be given the CloseAccount authority on the created
@@ -131,7 +131,7 @@ class BaseClient:
     def get_balance(self, public_key: PublicKey, commitment: Optional[Commitment] = None) -> int:
         """Retrieves the balance of an account.
 
-        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to retrieve the balance
+        :param public_key: The :class:`PublicKey <agora.keys.PublicKey>` of the account to retrieve the balance
             for.
         :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
@@ -186,9 +186,9 @@ class BaseClient:
     ) -> BatchEarnResult:
         """Submit multiple earn payments.
 
-        :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the sender
+        :param sender: The :class:`PrivateKey <agora.keys.PrivateKey>` of the sender
         :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of a channel account to use as
+        :param channel: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of a channel account to use as
             the transaction source. If not set, the `sender` will be used as the source.
         :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
             will be applied.
@@ -221,7 +221,7 @@ class Client(BaseClient):
     :param env: The :class:`Environment <agora.environment.Environment>` to use.
     :param app_index: (optional) The Agora index of the app, used for all transactions and requests. Required to make
         use of invoices.
-    :param whitelist_key: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to whitelist
+    :param whitelist_key: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to whitelist
         submitted transactions with.
     :param grpc_channel: (optional) A GRPC :class:`Channel <grpc.Channel>` object to use for Agora requests. Only one of
         grpc_channel or endpoint should be set.

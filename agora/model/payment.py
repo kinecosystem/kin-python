@@ -14,11 +14,11 @@ from agora.utils import kin_to_quarks
 class Payment:
     """The :class:`Payment <Payment>` object, which represents a payment that will get submitted.
 
-    :param sender: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account from which funds will be sent.
-    :param destination: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to which funds will be sent.
+    :param sender: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account from which funds will be sent.
+    :param destination: The :class:`PublicKey <agora.keys.PublicKey>` of the account to which funds will be sent.
     :param tx_type: The :class:`TransactionType <agora.model.transaction_type.TransactionType>` of this payment.
     :param quarks: The amount being sent.
-    :param channel: (optional) The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the channel account that will be
+    :param channel: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of the channel account that will be
         used as the source of the transaction. If unset, the `sender` will be used as the transaction source.
 
         On Stellar, this is where the transaction fee and sequence number is taken/chosen from. This field is irrelevant
@@ -72,8 +72,8 @@ class ReadOnlyPayment:
     """The :class:`ReadOnlyPayment <ReadOnlyPayment>` object, which represents a payment that was retrieved from
     history.
 
-    :param sender: The :class:`PublicKey <agora.model.keys.PublicKey>` of the sending account.
-    :param destination: The :class:`PublicKey <agora.model.keys.PublicKey>` of the destination account.
+    :param sender: The :class:`PublicKey <agora.keys.PublicKey>` of the sending account.
+    :param destination: The :class:`PublicKey <agora.keys.PublicKey>` of the destination account.
     :param tx_type: The type of this payment.
     :param quarks: The amount of the payment.
     :param invoice: (optional) The :class:`Invoice <agora.model.invoice.Invoice>` associated with this payment. Only one

@@ -103,7 +103,7 @@ class InternalClient:
     def create_stellar_account(self, private_key: PrivateKey):
         """Submit a request to Agora to create a Stellar account.
 
-        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to create
+        :param private_key: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to create
         """
 
         def _create():
@@ -124,7 +124,7 @@ class InternalClient:
     def get_stellar_account_info(self, public_key: PublicKey) -> AccountInfo:
         """Get the info of a Stellar account from Agora.
 
-        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to request the info for.
+        :param public_key: The :class:`PublicKey <agora.keys.PublicKey>` of the account to request the info for.
         :return: A :class:`AccountInfo <agora.model.account.AccountInfo>` object.
         """
 
@@ -214,9 +214,9 @@ class InternalClient:
                               subsidizer: Optional[PrivateKey] = None):
         """Submit a request to Agora to create a Solana account.
 
-        :param private_key: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to create
+        :param private_key: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to create
         :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use.
-        :param subsidizer: The :class:`PrivateKey <agora.model.keys.PrivateKey>` of the account to use as the
+        :param subsidizer: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to use as the
             transaction payer.
         """
 
@@ -291,7 +291,7 @@ class InternalClient:
     ) -> AccountInfo:
         """Get the info of a Solana account from Agora.
 
-        :param public_key: The :class:`PublicKey <agora.model.keys.PublicKey>` of the account to request the info for.
+        :param public_key: The :class:`PublicKey <agora.keys.PublicKey>` of the account to request the info for.
         :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use.
         :return: A :class:`AccountInfo <agora.model.account.AccountInfo>` object.
         """

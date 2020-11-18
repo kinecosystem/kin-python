@@ -33,7 +33,7 @@ class AccountMeta:
     def new(cls, pub: PublicKey, is_signer: bool) -> 'AccountMeta':
         """ Creates a new :class:`AccountMeta <AccountMeta>` representing a writable account.
 
-        :param pub: the :class:`PublicKey <agora.model.keys.PublicKey>` of the account.
+        :param pub: the :class:`PublicKey <agora.keys.PublicKey>` of the account.
         :param is_signer: indicates whether this account is a signer.
         """
         return cls(pub, is_signer=is_signer, is_writable=True)
@@ -42,7 +42,7 @@ class AccountMeta:
     def new_read_only(cls, pub: PublicKey, is_signer: bool) -> 'AccountMeta':
         """ Creates a new `AccountMeta <AccountMeta` representing a read-only account.
 
-        :param pub: the :class:`PublicKey <agora.model.keys.PublicKey>` of the account.
+        :param pub: the :class:`PublicKey <agora.keys.PublicKey>` of the account.
         :param is_signer: indicates whether this account is a signer.
         :return:
         """
