@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## [0.4.4](https://github.com/kinecosystem/kin-python/releases/tag/0.4.4)
 - Reduce token account cache size
 - Do not throw exception for setting channel on Kin 4 payments
 - Check for duplicate signers for Stellar transactions
