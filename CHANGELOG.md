@@ -4,6 +4,7 @@
 - Reduce token account cache size
 - Do not throw exception for setting channel on Kin 4 payments
 - Check for duplicate signers for Stellar transactions
+- Include read-only signers in Solana transaction `num_signatures` header
 
 ## [0.4.3](https://github.com/kinecosystem/kin-python/releases/tag/0.4.3)
 - Fix uploaded wheel to remove `agora/model/keys.py` 

@@ -123,7 +123,7 @@ class TestTransaction:
 
         assert len(tx.signatures) == 4
         assert len(tx.message.accounts) == 6
-        assert tx.message.header.num_signatures == 3
+        assert tx.message.header.num_signatures == 4
         assert tx.message.header.num_read_only_signed == 1
         assert tx.message.header.num_read_only == 1
 
@@ -162,7 +162,7 @@ class TestTransaction:
 
         assert len(tx.signatures) == 3
         assert len(tx.message.accounts) == 6
-        assert tx.message.header.num_signatures == 2
+        assert tx.message.header.num_signatures == 3
         assert tx.message.header.num_read_only_signed == 1
         assert tx.message.header.num_read_only == 2
 

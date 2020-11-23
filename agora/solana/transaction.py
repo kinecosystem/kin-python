@@ -180,14 +180,13 @@ class Transaction:
 
         header = Header(0, 0, 0)
         for account in accounts:
-            if account.is_writable and account.is_signer:
+            if account.is_signer:
                 header.num_signatures += 1
-
-            if not account.is_writable:
-                if account.is_signer:
+                if not account.is_writable:
                     header.num_read_only_signed += 1
-                else:
-                    header.num_read_only += 1
+
+            elif not account.is_writable:
+                header.num_read_only += 1
 
         compiled_instructions = []
         for i in instructions:
@@ -205,7 +204,7 @@ class Transaction:
             if len(account_ids[i].raw) == 0:
                 account_ids[i] = bytearray(ED25519_PUB_KEY_SIZE)
 
-        return Transaction([bytes(SIGNATURE_LENGTH)] * (header.num_signatures + header.num_read_only_signed),
+        return Transaction([bytes(SIGNATURE_LENGTH)] * header.num_signatures,
                            Message(header, account_ids, bytes(HASH_LENGTH), compiled_instructions))
 
     @classmethod
