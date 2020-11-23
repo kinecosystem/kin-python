@@ -131,8 +131,7 @@ class ReadOnlyPayment:
             except ValueError:
                 text_memo = memo_data
 
-        transfer_count = (len(tx.message.instructions) - 1 if (text_memo or agora_memo)
-                          else len(tx.message.instructions))
+        transfer_count = len(tx.message.instructions) - start_index
         if invoice_list and invoice_list.invoices and len(invoice_list.invoices) != transfer_count:
             raise ValueError(f'number of invoices ({len(invoice_list.invoices)}) does not match number of non-memo '
                              f'transaction instructions ({transfer_count})')
