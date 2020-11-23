@@ -18,7 +18,7 @@ class TokenAccountResolver:
     def __init__(self, account_stub: account_pb_grpc.AccountStub, retry_strategies: List[Strategy] = None):
         self._account_stub = account_stub
         self._retry_strategies = retry_strategies if retry_strategies else []
-        self._cache = LRUCache(300, 30000)
+        self._cache = LRUCache(300, 500)
 
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
         """Resolve the provided public key to its token accounts.

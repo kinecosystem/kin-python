@@ -336,7 +336,7 @@ class Client(BaseClient):
         if self._kin_version != 4:
             raise UnsupportedVersionError("`resolve_token_accounts` is only available on Kin 4")
 
-        return self._internal_client.resolve_token_accounts(public_key)
+        return self._token_account_resolver.resolve_token_accounts(public_key)
 
     def submit_payment(
         self, payment: Payment, commitment: Optional[Commitment] = None,
@@ -530,9 +530,6 @@ class Client(BaseClient):
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
     ) -> SubmitTransactionResult:
-        if payment.channel:
-            raise ValueError('cannot set `channel` on Kin 4 payments.')
-
         service_config = self._internal_client.get_service_config()
         if not service_config.subsidizer_account.value and not payment.subsidizer:
             raise NoSubsidizerError()
@@ -697,12 +694,12 @@ class Client(BaseClient):
             asset_issuer=self._asset_issuer if self._kin_version == 2 else None,
         )
 
-        if payment.channel:
+        if payment.channel and payment.channel != payment.sender:
             signers = [payment.channel, payment.sender]
         else:
             signers = [payment.sender]
 
-        if self.whitelist_key:
+        if self.whitelist_key and self.whitelist_key not in signers:
             signers.append(self.whitelist_key)
 
         return self._sign_and_submit_builder(signers, builder, invoice_list)
@@ -737,12 +734,12 @@ class Client(BaseClient):
                 asset_issuer=self._asset_issuer if self._kin_version == 2 else None,
             )
 
-        if batch.channel:
+        if batch.channel and batch.channel != batch.sender:
             signers = [batch.channel, batch.sender]
         else:
             signers = [batch.sender]
 
-        if self.whitelist_key:
+        if self.whitelist_key and self.whitelist_key not in signers:
             signers.append(self.whitelist_key)
 
         result = self._sign_and_submit_builder(signers, builder, invoice_list)
