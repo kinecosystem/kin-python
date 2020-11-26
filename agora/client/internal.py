@@ -12,6 +12,7 @@ from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4, transac
 from kin_base import transaction_envelope as te
 
 from agora.cache.cache import LRUCache
+from agora.client.utils import _generate_token_account
 from agora.error import BlockchainVersionError, AccountExistsError, AccountNotFoundError, TransactionRejectedError, \
     TransactionErrors, Error, InsufficientBalanceError, PayerRequiredError, NoSubsidizerError, AlreadySubmittedError, \
     BadNonceError
@@ -220,6 +221,7 @@ class InternalClient:
             transaction payer.
         """
 
+        token_account_key = _generate_token_account(private_key)
         def _create():
             nonlocal subsidizer
 
@@ -244,19 +246,19 @@ class InternalClient:
                 [
                     system.create_account(
                         subsidizer_id,
-                        private_key.public_key,
+                        token_account_key.public_key,
                         token_program,
                         min_balance_resp.lamports,
                         token.ACCOUNT_SIZE,
                     ),
                     token.initialize_account(
-                        private_key.public_key,
+                        token_account_key.public_key,
                         PublicKey(service_config_resp.token.value),
                         private_key.public_key,
                         token_program,
                     ),
                     token.set_authority(
-                        private_key.public_key,
+                        token_account_key.public_key,
                         private_key.public_key,
                         token.AuthorityType.CloseAccount,
                         token_program,
@@ -265,7 +267,7 @@ class InternalClient:
                 ]
             )
             transaction.set_blockhash(recent_blockhash_resp.blockhash.value)
-            transaction.sign([private_key])
+            transaction.sign([private_key, token_account_key])
             if subsidizer:
                 transaction.sign([subsidizer])
 

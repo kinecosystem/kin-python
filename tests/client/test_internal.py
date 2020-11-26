@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from concurrent import futures
 from typing import Tuple
 
@@ -13,6 +14,7 @@ from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4
 
 from agora.client.client import _NON_RETRIABLE_ERRORS
 from agora.client.internal import InternalClient
+from agora.client.utils import _generate_token_account
 from agora.error import AccountExistsError, AccountNotFoundError, Error, TransactionRejectedError, BadNonceError, \
     InsufficientBalanceError, PayerRequiredError, NoSubsidizerError, AlreadySubmittedError
 from agora.keys import PrivateKey
@@ -96,6 +98,7 @@ class TestInternalClientV4:
 
     def test_create_solana_account(self, grpc_channel, executor, no_retry_client):
         private_key = PrivateKey.random()
+        token_account_key = _generate_token_account(private_key)
 
         no_retry_client._response_cache.clear_all()
         future = executor.submit(no_retry_client.create_solana_account, private_key)
@@ -107,24 +110,25 @@ class TestInternalClientV4:
         req = self._set_create_account_resp(grpc_channel, account_pb_v4.CreateAccountResponse())
 
         tx = Transaction.unmarshal(req.transaction.value)
-        assert len(tx.signatures) == 2
+        assert len(tx.signatures) == 3
         assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        assert token_account_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[2])
 
         sys_create = decompile_create_account(tx.message, 0)
         assert sys_create.funder == _subsidizer
-        assert sys_create.address == private_key.public_key
+        assert sys_create.address == token_account_key.public_key
         assert sys_create.owner == _token_program
         assert sys_create.lamports == _min_balance
         assert sys_create.size == token.ACCOUNT_SIZE
 
         token_init = decompile_initialize_account(tx.message, 1, _token_program)
-        assert token_init.account == private_key.public_key
+        assert token_init.account == token_account_key.public_key
         assert token_init.mint == _token
         assert token_init.owner == private_key.public_key
 
         token_set_auth = decompile_set_authority(tx.message, 2, _token_program)
-        assert token_set_auth.account == private_key.public_key
+        assert token_set_auth.account == token_account_key.public_key
         assert token_set_auth.current_authority == private_key.public_key
         assert token_set_auth.authority_type == token.AuthorityType.CloseAccount
         assert token_set_auth.new_authority == _subsidizer
@@ -141,6 +145,7 @@ class TestInternalClientV4:
     )
     def test_create_account_errors(self, grpc_channel, executor, no_retry_client, result, error_type):
         private_key = PrivateKey.random()
+        token_account_key = PrivateKey(hashlib.sha256(private_key.raw).digest())
 
         no_retry_client._response_cache.clear_all()
         future = executor.submit(no_retry_client.create_solana_account, private_key)
@@ -153,24 +158,25 @@ class TestInternalClientV4:
         req = self._set_create_account_resp(grpc_channel, resp)
 
         tx = Transaction.unmarshal(req.transaction.value)
-        assert len(tx.signatures) == 2
+        assert len(tx.signatures) == 3
         assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        assert token_account_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[2])
 
         sys_create = decompile_create_account(tx.message, 0)
         assert sys_create.funder == _subsidizer
-        assert sys_create.address == private_key.public_key
+        assert sys_create.address == token_account_key.public_key
         assert sys_create.owner == _token_program
         assert sys_create.lamports == _min_balance
         assert sys_create.size == token.ACCOUNT_SIZE
 
         token_init = decompile_initialize_account(tx.message, 1, _token_program)
-        assert token_init.account == private_key.public_key
+        assert token_init.account == token_account_key.public_key
         assert token_init.mint == _token
         assert token_init.owner == private_key.public_key
 
         token_set_auth = decompile_set_authority(tx.message, 2, _token_program)
-        assert token_set_auth.account == private_key.public_key
+        assert token_set_auth.account == token_account_key.public_key
         assert token_set_auth.current_authority == private_key.public_key
         assert token_set_auth.authority_type == token.AuthorityType.CloseAccount
         assert token_set_auth.new_authority == _subsidizer
@@ -180,6 +186,7 @@ class TestInternalClientV4:
 
     def test_create_account_no_service_subsidizer(self, grpc_channel, executor, no_retry_client):
         private_key = PrivateKey.random()
+        token_account_key = _generate_token_account(private_key)
 
         no_retry_client._response_cache.clear_all()
         future = executor.submit(no_retry_client.create_solana_account, private_key)
@@ -206,24 +213,25 @@ class TestInternalClientV4:
         req = self._set_create_account_resp(grpc_channel, account_pb_v4.CreateAccountResponse())
 
         tx = Transaction.unmarshal(req.transaction.value)
-        assert len(tx.signatures) == 2
+        assert len(tx.signatures) == 3
         assert subsidizer.public_key.verify(tx.message.marshal(), tx.signatures[0])
-        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        assert token_account_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[2])
 
         sys_create = decompile_create_account(tx.message, 0)
         assert sys_create.funder == subsidizer.public_key
-        assert sys_create.address == private_key.public_key
+        assert sys_create.address == token_account_key.public_key
         assert sys_create.owner == _token_program
         assert sys_create.lamports == _min_balance
         assert sys_create.size == token.ACCOUNT_SIZE
 
         token_init = decompile_initialize_account(tx.message, 1, _token_program)
-        assert token_init.account == private_key.public_key
+        assert token_init.account == token_account_key.public_key
         assert token_init.mint == _token
         assert token_init.owner == private_key.public_key
 
         token_set_auth = decompile_set_authority(tx.message, 2, _token_program)
-        assert token_set_auth.account == private_key.public_key
+        assert token_set_auth.account == token_account_key.public_key
         assert token_set_auth.current_authority == private_key.public_key
         assert token_set_auth.authority_type == token.AuthorityType.CloseAccount
         assert token_set_auth.new_authority == subsidizer.public_key
