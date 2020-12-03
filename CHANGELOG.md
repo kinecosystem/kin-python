@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.4.6](https://github.com/kinecosystem/kin-python/releases/tag/0.4.6)
+- Add optional `account_resolution` parameter to `Client.get_balance` 
+
 ## [0.4.5](https://github.com/kinecosystem/kin-python/releases/tag/0.4.5)
 - Create new accounts with different token account address
 
