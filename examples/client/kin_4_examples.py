@@ -1,11 +1,11 @@
 import argparse
+
 import base58
 
 from agora.client import Client, Environment
 from agora.error import AccountExistsError, Error, TransactionErrors
 from agora.keys import PrivateKey, PublicKey
 from agora.model import Payment, TransactionType, Earn
-from agora.solana import Commitment
 
 
 def submit_payment(p: Payment):
@@ -36,12 +36,17 @@ try:
 except AccountExistsError:
     print(f'account {sender_addr} already exists')
 
-print(f'balance: {client.get_balance(sender.public_key)}')
+token_accounts = client.resolve_token_accounts(sender.public_key)
+print(f'{sender_addr} token accounts: {[a.to_base58() for a in token_accounts]}')
 
-print(f'requesting airdrop for {sender_addr}')
-airdrop_resp = client._internal_client.request_airdrop(sender.public_key, int(3e5))
+token_account = token_accounts[0]
+print(f'balance: {client.get_balance(token_account)}')
 
-print(f'funded {sender_addr}')
+# Note: the airdrop service is only available when using Environment.TEST.
+print(f'requesting airdrop for {token_account.to_base58()}')
+airdrop_resp = client._internal_client.request_airdrop(token_account, int(7e5))
+
+print(f'funded {token_account.to_base58()}')
 
 # use airdrop source as destination for the following transactions
 airdrop_source = PublicKey.from_base58("DemXVWQ9DXYsGFpmjFXxki3PE1i3VoHQtqxXQFx38pmU")
@@ -60,8 +65,6 @@ print(f'submitted: {base58.b58encode(tx_id)}')
 tx_data = client.get_transaction(tx_id)
 print(repr(tx_data))
 
-print(f'balance: {client.get_balance(sender.public_key)}')
-
 # Send earn batch
 earns = [Earn(airdrop_source, int(1e5)) for i in range(0, 5)]
 batch_result = client.submit_earn_batch(sender, earns)
@@ -72,8 +75,6 @@ for result in batch_result.succeeded:
 for result in batch_result.failed:
     print(f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction '
           f'{base58.b58encode(result.tx_id)} (error: {repr(result.error)})')
-
-print(f'balance: {client.get_balance(sender.public_key, commitment=Commitment.ROOT)}')
 
 # The client should be closed once it is no longer needed.
 client.close()
