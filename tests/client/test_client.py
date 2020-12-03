@@ -1424,6 +1424,47 @@ class TestAgoraClient:
 
         assert req.account_id.value == private_key.public_key.raw
 
+    def test_kin_4_get_balance_not_found(self, grpc_channel, executor, kin_4_client):
+        private_key = PrivateKey.random()
+        resolved_key = PrivateKey.random()
+
+        # Test with EXACT resolution
+        future = executor.submit(kin_4_client.get_balance, private_key.public_key,
+                                 account_resolution=AccountResolution.EXACT)
+
+        resp = account_pb_v4.GetAccountInfoResponse(
+            result=account_pb_v4.GetAccountInfoResponse.Result.NOT_FOUND,
+        )
+        req = self._set_v4_get_account_info_resp(grpc_channel, resp)
+
+        with pytest.raises(AccountNotFoundError):
+            future.result()
+
+        assert req.account_id.value == private_key.public_key.raw
+
+        # Test with PREFERRED resolution
+        future = executor.submit(kin_4_client.get_balance, private_key.public_key,
+                                 account_resolution=AccountResolution.PREFERRED)
+
+        req1 = self._set_v4_get_account_info_resp(grpc_channel, resp)
+
+        self._set_v4_resolve_token_accounts_resp(grpc_channel, account_pb_v4.ResolveTokenAccountsResponse(
+            token_accounts=[model_pb_v4.SolanaAccountId(value=resolved_key.public_key.raw)]
+        ))
+
+        req2 = self._set_v4_get_account_info_resp(grpc_channel, account_pb_v4.GetAccountInfoResponse(
+            result=account_pb_v4.GetAccountInfoResponse.Result.OK,
+            account_info=account_pb_v4.AccountInfo(
+                account_id=model_pb_v4.SolanaAccountId(value=resolved_key.public_key.raw),
+                balance=200000
+            )
+        ))
+
+        assert future.result() == 200000
+
+        assert req1.account_id.value == private_key.public_key.raw
+        assert req2.account_id.value == resolved_key.public_key.raw
+
     def test_kin_4_create_account_with_nonce_retry(self, grpc_channel, executor):
         client = Client(Environment.TEST, app_index=1, grpc_channel=grpc_channel, retry_config=_config_with_nonce_retry,
                         kin_version=4)

@@ -128,12 +128,18 @@ class BaseClient:
         """
         raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement get_transaction')
 
-    def get_balance(self, public_key: PublicKey, commitment: Optional[Commitment] = None) -> int:
+    def get_balance(
+        self, public_key: PublicKey, commitment: Optional[Commitment] = None,
+        account_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
+    ) -> int:
         """Retrieves the balance of an account.
 
         :param public_key: The :class:`PublicKey <agora.keys.PublicKey>` of the account to retrieve the balance
             for.
         :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
+        :param account_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
+            use if the original account was not found. Only applies for Kin 4. Defaults to AccountResolution.PREFERRED.
+
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountNotFoundError <agora.error.AccountNotFoundError>`
         :return: The balance of the account, in quarks.
@@ -156,7 +162,7 @@ class BaseClient:
 
         :param payment: The :class:`Payment <agora.model.payment.Payment>` to submit.
         :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
-        :param sender_resolution:  (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
+        :param sender_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
             use for the payment sender account if the transaction fails due to an account error. Only applies for Kin 4
             transactions. Defaults to AccountResolution.PREFERRED.
         :param dest_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
@@ -319,7 +325,10 @@ class Client(BaseClient):
         commitment = commitment if commitment else self._default_commitment
         return self._internal_client.get_transaction(tx_id, commitment)
 
-    def get_balance(self, public_key: PublicKey, commitment: Optional[Commitment] = None) -> int:
+    def get_balance(
+        self, public_key: PublicKey, commitment: Optional[Commitment] = None,
+        account_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
+    ) -> int:
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError()
 
@@ -330,7 +339,14 @@ class Client(BaseClient):
             except BlockchainVersionError:
                 self._set_kin_version(4)
 
-        return self._internal_client.get_solana_account_info(public_key, commitment=commitment).balance
+        try:
+            return self._internal_client.get_solana_account_info(public_key, commitment=commitment).balance
+        except AccountNotFoundError as e:
+            if account_resolution == AccountResolution.PREFERRED:
+                token_accounts = self._token_account_resolver.resolve_token_accounts(public_key)
+                if token_accounts:
+                    return self._internal_client.get_solana_account_info(token_accounts[0], commitment=commitment).balance
+            raise e
 
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
         if self._kin_version != 4:
