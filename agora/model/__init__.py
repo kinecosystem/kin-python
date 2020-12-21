@@ -3,7 +3,7 @@ from .earn import Earn
 from .invoice import LineItem, Invoice, InvoiceList
 from .memo import AgoraMemo
 from .payment import Payment, ReadOnlyPayment
-from .result import EarnResult, BatchEarnResult
+from .result import EarnError, EarnBatchResult
 from .transaction import TransactionData, TransactionState
 from .transaction_type import TransactionType
 
@@ -16,8 +16,8 @@ __all__ = [
     'AgoraMemo',
     'Payment',
     'ReadOnlyPayment',
-    'EarnResult',
-    'BatchEarnResult',
+    'EarnError',
+    'EarnBatchResult',
     'TransactionData',
     'TransactionState',
     'TransactionType',

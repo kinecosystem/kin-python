@@ -86,7 +86,7 @@ def gen_create_op(
     """
     body = xdr_pack.nullclass()
     body.type = xdr_const.CREATE_ACCOUNT
-    body.createAccountOp = xdr_type.CreateAccountOp(destination=dest)
+    body.createAccountOp = xdr_type.CreateAccountOp(destination=dest, startingBalance=10)
 
     return xdr_type.Operation(
         sourceAccount=[src],

@@ -1,4 +1,5 @@
 import base64
+import uuid
 from concurrent import futures
 from typing import List, Tuple
 
@@ -14,7 +15,6 @@ from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4
 from kin_base import transaction_envelope as te, memo, operation
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
-from agora import solana
 from agora.client.account.resolution import AccountResolution
 from agora.client.client import Client, RetryConfig, BaseClient, _NETWORK_NAMES
 from agora.client.environment import Environment
@@ -23,7 +23,7 @@ from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBa
     DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
     TransactionRejectedError, Error, AlreadyPaidError
 from agora.keys import PrivateKey
-from agora.model.earn import Earn
+from agora.model.earn import Earn, EarnBatch
 from agora.model.invoice import InvoiceList, Invoice, LineItem
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
@@ -34,7 +34,7 @@ from agora.solana.memo import decompile_memo
 from agora.solana.system import decompile_create_account
 from agora.solana.token import decompile_initialize_account, decompile_transfer, decompile_set_authority
 from agora.solana.transaction import HASH_LENGTH, Transaction, SIGNATURE_LENGTH
-from agora.utils import partition, kin_to_quarks, quarks_to_kin, envelope_from_xdr
+from agora.utils import kin_to_quarks, quarks_to_kin, envelope_from_xdr
 from agora.utils import user_agent
 from agora.version import VERSION
 from tests.utils import gen_account_id, gen_tx_envelope_xdr, gen_payment_op, gen_payment_op_result, gen_result_xdr, \
@@ -733,115 +733,75 @@ class TestAgoraClient:
                                           payment)
             assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_multiple(self, grpc_channel, executor, app_index_client):
+    def test_submit_earn_batch(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(250)]
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(15)]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, all_earns)
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
-        account_reqs = []
-        submit_reqs = []
-        tx_hashes = []
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         starting_seq = 10
 
-        for i in range(3):
-            account_reqs.append(self._set_successful_get_account_info_resp(grpc_channel, sender, starting_seq + i))
-            tx_hash = f'somehash{i}'.encode()
-            submit_reqs.append(self._set_successful_submit_transaction_resp(grpc_channel, tx_hash, result_xdr))
-            tx_hashes.append(tx_hash)
+        account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, starting_seq)
+        tx_hash = b'somehash'
+        submit_req = (self._set_successful_submit_transaction_resp(grpc_channel, tx_hash, result_xdr))
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 250
-        assert len(batch_earn_result.failed) == 0
-
-        for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.stellar_address
-
-        earn_batches = partition(all_earns, 100)
-        for idx, submit_req in enumerate(submit_reqs):
-            expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-            self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, starting_seq + idx + 1,
-                                             expected_memo, sender, earn_batches[idx])
-            assert len(submit_req.invoice_list.invoices) == 0
-
-    def test_submit_earn_batch_multiple_kin_2(self, grpc_channel, executor, kin_2_client):
-        sender = PrivateKey.random()
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(250)]
-
-        future = executor.submit(kin_2_client.submit_earn_batch, sender, all_earns)
-
-        account_reqs = []
-        submit_reqs = []
-        tx_hashes = []
-        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
-        starting_seq = 10
-
-        for i in range(3):
-            account_reqs.append(self._set_successful_get_account_info_resp(grpc_channel, sender, starting_seq + i))
-            tx_hash = f'somehash{i}'.encode()
-            submit_reqs.append(self._set_successful_submit_transaction_resp(grpc_channel, tx_hash, result_xdr))
-            tx_hashes.append(tx_hash)
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 250
-        assert len(batch_earn_result.failed) == 0
-
-        for account_req in account_reqs:
-            assert account_req.account_id.value == sender.public_key.stellar_address
-
-        earn_batches = partition(all_earns, 100)
-        for idx, submit_req in enumerate(submit_reqs):
-            expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-            self._assert_kin_2_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100,
-                                                   starting_seq + idx + 1,
-                                                   expected_memo, sender, earn_batches[idx])
-            assert len(submit_req.invoice_list.invoices) == 0
-
-    def test_submit_earn_batch_same_dest(self, grpc_channel, executor, app_index_client):
-        sender = PrivateKey.random()
-        dest = PrivateKey.random().public_key
-        all_earns = [Earn(dest, i) for i in range(5)]
-
-        future = executor.submit(app_index_client.submit_earn_batch, sender, all_earns)
-
-        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
-
-        account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
-        tx_hash = 'somehash'.encode()
-        submit_req = self._set_successful_submit_transaction_resp(grpc_channel, tx_hash, result_xdr)
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 5
-        assert len(batch_earn_result.failed) == 0
+        result = future.result()
+        assert result.tx_id == tx_hash
+        assert not result.tx_error
+        assert not result.earn_errors
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11,
-                                         expected_memo, sender, all_earns)
+        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, starting_seq + 1,
+                                         expected_memo, sender, earns)
+        assert len(submit_req.invoice_list.invoices) == 0
+
+    def test_submit_earn_batch_kin_2(self, grpc_channel, executor, kin_2_client):
+        sender = PrivateKey.random()
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(15)]
+        b = EarnBatch(sender, earns)
+
+        future = executor.submit(kin_2_client.submit_earn_batch, b)
+
+        result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
+        starting_seq = 10
+
+        account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, starting_seq)
+        tx_hash = b'somehash'
+        submit_req = self._set_successful_submit_transaction_resp(grpc_channel, tx_hash, result_xdr)
+
+        result = future.result()
+        assert result.tx_id == tx_hash
+        assert not result.tx_error
+        assert not result.earn_errors
+
+        assert account_req.account_id.value == sender.public_key.stellar_address
+
+        expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, b'').val)
+        self._assert_kin_2_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100,
+                                               starting_seq + 1, expected_memo, sender, earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
     def test_submit_earn_batch_with_channel(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
         channel = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
+        b = EarnBatch(sender, earns, channel=channel)
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns, channel=channel)
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, channel, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_resp(grpc_channel, b'somehash', result_xdr)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 1
-        assert len(batch_earn_result.failed) == 0
-
-        earn_result = batch_earn_result.succeeded[0]
-        assert earn_result.earn == earns[0]
-        assert earn_result.tx_id == b'somehash'
-        assert not earn_result.error
+        result = future.result()
+        assert result.tx_id == b'somehash'
+        assert not result.tx_error
+        assert not result.earn_errors
 
         assert account_req.account_id.value == channel.public_key.stellar_address
 
@@ -854,22 +814,19 @@ class TestAgoraClient:
     def test_submit_earn_batch_with_whitelisting(self, grpc_channel, executor, whitelisting_client):
         sender = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(whitelisting_client.submit_earn_batch, sender, earns)
+        future = executor.submit(whitelisting_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_resp(grpc_channel, b'somehash', result_xdr)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 1
-        assert len(batch_earn_result.failed) == 0
-
-        earn_result = batch_earn_result.succeeded[0]
-        assert earn_result.earn == earns[0]
-        assert earn_result.tx_id == b'somehash'
-        assert not earn_result.error
+        result = future.result()
+        assert result.tx_id == b'somehash'
+        assert not result.tx_error
+        assert not result.earn_errors
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -881,27 +838,23 @@ class TestAgoraClient:
     def test_submit_earn_batch_duplicate_signers(self, grpc_channel, executor):
         sender = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
+        b = EarnBatch(sender, earns, channel=sender)
 
         retry_config = RetryConfig(max_retries=0, min_delay=0, max_delay=0, max_nonce_refreshes=0)
         client = Client(Environment.TEST, app_index=1, grpc_channel=grpc_channel, retry_config=retry_config,
                         whitelist_key=sender)
 
-        future = executor.submit(client.submit_earn_batch, sender, earns, channel=sender)
+        future = executor.submit(client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_resp(grpc_channel, b'somehash', result_xdr)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 1
-        assert len(batch_earn_result.failed) == 0
-
-        earn_result = batch_earn_result.succeeded[0]
-        assert earn_result.earn == earns[0]
-        assert earn_result.tx_id == b'somehash'
-        assert not earn_result.error
-
+        result = future.result()
+        assert result.tx_id == b'somehash'
+        assert not result.tx_error
+        assert not result.earn_errors
         assert account_req.account_id.value == sender.public_key.stellar_address
 
         expected_signers = [sender]
@@ -913,22 +866,19 @@ class TestAgoraClient:
     def test_submit_earn_batch_with_memo(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
+        b = EarnBatch(sender, earns, memo="somememo")
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns, memo="somememo")
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_resp(grpc_channel, b'somehash', result_xdr)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 1
-        assert len(batch_earn_result.failed) == 0
-
-        earn_result = batch_earn_result.succeeded[0]
-        assert earn_result.earn == earns[0]
-        assert earn_result.tx_id == b'somehash'
-        assert not earn_result.error
+        result = future.result()
+        assert result.tx_id == b'somehash'
+        assert not result.tx_error
+        assert not result.earn_errors
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -945,24 +895,19 @@ class TestAgoraClient:
             Earn(PrivateKey.random().public_key, 100000,
                  invoice=Invoice([LineItem('title2', 100000, 'description2', b'somesku')])),
         ]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns)
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
         result_xdr = gen_result_xdr(xdr_const.txSUCCESS, [gen_payment_op_result(xdr_const.PAYMENT_SUCCESS)])
         submit_req = self._set_successful_submit_transaction_resp(grpc_channel, b'somehash', result_xdr)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 2
-        assert len(batch_earn_result.failed) == 0
-
-        for idx, earn_result in enumerate(batch_earn_result.succeeded):
-            assert earn_result.tx_id == b'somehash'
-            assert earn_result.earn == earns[idx]
-            assert not earn_result.error
-
-        assert account_req.account_id.value == sender.public_key.stellar_address
+        result = future.result()
+        assert result.tx_id == b'somehash'
+        assert not result.tx_error
+        assert not result.earn_errors
 
         il = InvoiceList([earn.invoice for earn in earns])
         expected_memo = memo.HashMemo(AgoraMemo.new(1, TransactionType.EARN, 1, il.get_sha_224_hash()).val)
@@ -979,8 +924,9 @@ class TestAgoraClient:
             Earn(PrivateKey.random().public_key, 100000,
                  invoice=Invoice([LineItem('title2', 100000, 'description2', b'somesku')])),
         ]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(no_app_client.submit_earn_batch, sender, earns)
+        future = executor.submit(no_app_client.submit_earn_batch, b)
 
         with pytest.raises(ValueError):
             future.result()
@@ -992,8 +938,9 @@ class TestAgoraClient:
                  invoice=Invoice([LineItem('title1', 100000, 'description1', b'somesku')])),
             Earn(PrivateKey.random().public_key, 100000),
         ]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns)
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         with pytest.raises(ValueError):
             future.result()
@@ -1004,8 +951,9 @@ class TestAgoraClient:
             Earn(PrivateKey.random().public_key, 100000,
                  invoice=Invoice([LineItem('title1', 100000, 'description1', b'somesku')])),
         ]
+        b = EarnBatch(sender, earns, memo="somememo")
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns, memo="somememo")
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         with pytest.raises(ValueError):
             future.result()
@@ -1016,8 +964,9 @@ class TestAgoraClient:
             Earn(PrivateKey.random().public_key, 100000),
             Earn(PrivateKey.random().public_key, 100000),
         ]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns)
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
@@ -1027,14 +976,8 @@ class TestAgoraClient:
         )
         submit_req = self._set_submit_transaction_resp(grpc_channel, resp)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 0
-        assert len(batch_earn_result.failed) == 2
-
-        for idx, earn_result in enumerate(batch_earn_result.failed):
-            assert earn_result.earn == earns[idx]
-            assert not earn_result.tx_id
-            assert isinstance(earn_result.error, TransactionRejectedError)
+        with pytest.raises(TransactionRejectedError):
+            future.result()
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -1043,66 +986,15 @@ class TestAgoraClient:
                                          earns)
         assert len(submit_req.invoice_list.invoices) == 0
 
-    def test_submit_earn_batch_invoice_error(self, grpc_channel, executor, app_index_client):
-        sender = PrivateKey.random()
-        earns = [
-            Earn(PrivateKey.random().public_key, 100000,
-                 invoice=Invoice([LineItem('title1', 100000, 'description1', b'somesku')])),
-            Earn(PrivateKey.random().public_key, 100000,
-                 invoice=Invoice([LineItem('title1', 100000, 'description1', b'somesku')])),
-        ]
-
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns)
-
-        account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
-
-        resp = tx_pb.SubmitTransactionResponse(
-            result=tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR,
-            invoice_errors=[
-                model_pb.InvoiceError(
-                    op_index=0,
-                    invoice=earns[0].invoice.to_proto(),
-                    reason=model_pb.InvoiceError.Reason.ALREADY_PAID,
-                ),
-                model_pb.InvoiceError(
-                    op_index=0,
-                    invoice=earns[1].invoice.to_proto(),
-                    reason=model_pb.InvoiceError.Reason.WRONG_DESTINATION,
-                )
-            ]
-        )
-        submit_req = self._set_submit_transaction_resp(grpc_channel, resp)
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 0
-        assert len(batch_earn_result.failed) == 2
-
-        for idx, earn_result in enumerate(batch_earn_result.failed):
-            assert earn_result.earn == earns[idx]
-            assert not earn_result.tx_id
-            assert isinstance(earn_result.error, Error)
-
-        assert account_req.account_id.value == sender.public_key.stellar_address
-
-        expected_memo = memo.HashMemo(
-            AgoraMemo.new(1, TransactionType.EARN, 1,
-                          InvoiceList([earn.invoice for earn in earns]).get_sha_224_hash()).val)
-        self._assert_earn_batch_envelope(submit_req.envelope_xdr, [sender], sender, 100, 11, expected_memo, sender,
-                                         earns)
-        assert len(submit_req.invoice_list.invoices) == 2
-        assert (submit_req.invoice_list.invoices[0].SerializeToString() ==
-                earns[0].invoice.to_proto().SerializeToString())
-        assert (submit_req.invoice_list.invoices[1].SerializeToString() ==
-                earns[1].invoice.to_proto().SerializeToString())
-
     def test_submit_earn_batch_tx_failed(self, grpc_channel, executor, app_index_client):
         sender = PrivateKey.random()
         earns = [
             Earn(PrivateKey.random().public_key, 100000),
             Earn(PrivateKey.random().public_key, 100000),
         ]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(app_index_client.submit_earn_batch, sender, earns)
+        future = executor.submit(app_index_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
@@ -1116,15 +1008,15 @@ class TestAgoraClient:
         )
         submit_req = self._set_submit_transaction_resp(grpc_channel, resp)
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 0
-        assert len(batch_earn_result.failed) == 2
+        result = future.result()
+        assert result.tx_id == b'somehash'
+        assert isinstance(result.tx_error, Error)
+        assert len(result.earn_errors) == 2
 
         expected_errors = [InsufficientBalanceError, DestinationDoesNotExistError]
-        for idx, earn_result in enumerate(batch_earn_result.failed):
-            assert earn_result.earn == earns[idx]
-            assert earn_result.tx_id  # make sure it's set
-            assert isinstance(earn_result.error, expected_errors[idx])
+        for idx, earn_error in enumerate(result.earn_errors):
+            assert earn_error.earn_index == idx
+            assert isinstance(earn_error.error, expected_errors[idx])
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -1136,8 +1028,9 @@ class TestAgoraClient:
     def test_submit_earn_batch_with_retry(self, grpc_channel, executor, retry_client):
         sender = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(retry_client.submit_earn_batch, sender, earns)
+        future = executor.submit(retry_client.submit_earn_batch, b)
 
         account_req = self._set_successful_get_account_info_resp(grpc_channel, sender, 10)
 
@@ -1152,14 +1045,8 @@ class TestAgoraClient:
             # the expected number of times.
             submit_reqs.append(self._set_submit_transaction_resp(grpc_channel, resp))
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 0
-        assert len(batch_earn_result.failed) == 1
-
-        earn_result = batch_earn_result.failed[0]
-        assert not earn_result.tx_id
-        assert earn_result.earn == earns[0]
-        assert isinstance(earn_result.error, Error)
+        with pytest.raises(Error):
+            future.result()
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -1173,8 +1060,9 @@ class TestAgoraClient:
     def test_submit_earn_batch_with_nonce_retry(self, grpc_channel, executor, nonce_retry_client):
         sender = PrivateKey.random()
         earns = [Earn(PrivateKey.random().public_key, 100000)]
+        b = EarnBatch(sender, earns)
 
-        future = executor.submit(nonce_retry_client.submit_earn_batch, sender, earns)
+        future = executor.submit(nonce_retry_client.submit_earn_batch, b)
 
         result_xdr = gen_result_xdr(xdr_const.txBAD_SEQ, [])
         resp = tx_pb.SubmitTransactionResponse(
@@ -1191,14 +1079,8 @@ class TestAgoraClient:
             # the expected number of times.
             submit_reqs.append(self._set_submit_transaction_resp(grpc_channel, resp))
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 0
-        assert len(batch_earn_result.failed) == 1
-
-        earn_result = batch_earn_result.failed[0]
-        assert not earn_result.tx_id
-        assert earn_result.earn == earns[0]
-        assert isinstance(earn_result.error, BadNonceError)
+        with pytest.raises(BadNonceError):
+            future.result()
 
         assert account_req.account_id.value == sender.public_key.stellar_address
 
@@ -1768,195 +1650,173 @@ class TestAgoraClient:
 
     def test_kin_4_submit_earn_batch_simple(self, grpc_channel, executor, kin_4_no_app_client):
         sender = PrivateKey.random()
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(60)]
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(15)]
+        b = EarnBatch(sender, earns, dedupe_id=uuid.uuid4().bytes)
 
         kin_4_no_app_client._internal_client._response_cache.clear_all()
-        future = executor.submit(kin_4_no_app_client.submit_earn_batch, sender, all_earns)
+        future = executor.submit(kin_4_no_app_client.submit_earn_batch, b)
 
         self._set_v4_get_service_config_resp(grpc_channel)
 
-        reqs = []
-        tx_ids = []
+        self._set_v4_get_recent_blockhash_resp(grpc_channel)
+        tx_id = b'somesig'
+        resp = tx_pb_v4.SubmitTransactionResponse(
+            result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
+            signature=model_pb_v4.TransactionSignature(value=tx_id),
+        )
+        req = self._set_v4_submit_tx_resp(grpc_channel, resp)
+        assert req.dedupe_id == b.dedupe_id
 
-        # this test results in 19 earns per submitted batch
-        for i in range(4):
-            self._set_v4_get_recent_blockhash_resp(grpc_channel)
-            tx_id = f'somesig{i}'.encode()
-            resp = tx_pb_v4.SubmitTransactionResponse(
-                result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
-                signature=model_pb_v4.TransactionSignature(value=tx_id),
-            )
-            reqs.append(self._set_v4_submit_tx_resp(grpc_channel, resp))
-            tx_ids.append(tx_id)
+        tx = Transaction.unmarshal(req.transaction.value)
+        assert len(tx.signatures) == 2
+        assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
+        assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
 
-        earn_batches = partition(all_earns, 19)
-        for idx, req in enumerate(reqs):
-            tx = Transaction.unmarshal(req.transaction.value)
-            assert len(tx.signatures) == 2
-            assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-            assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        for idx, earn in enumerate(earns):
+            transfer = decompile_transfer(tx.message, idx, _token_program)
+            assert transfer.source == sender.public_key
+            assert transfer.dest == earn.destination
+            assert transfer.owner == sender.public_key
+            assert transfer.amount == earn.quarks
 
-            for instruction_idx, earn in enumerate(earn_batches[idx]):
-                transfer = decompile_transfer(tx.message, instruction_idx, _token_program)
-                assert transfer.source == sender.public_key
-                assert transfer.dest == earn.destination
-                assert transfer.owner == sender.public_key
-                assert transfer.amount == earn.quarks
+        assert len(req.invoice_list.invoices) == 0
 
-            assert len(req.invoice_list.invoices) == 0
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 60
-        assert len(batch_earn_result.failed) == 0
+        result = future.result()
+        assert result.tx_id == tx_id
+        assert not result.tx_error
+        assert not result.earn_errors
 
     def test_kin_4_submit_earn_batch_with_subsidizer(self, grpc_channel, executor, kin_4_no_app_client):
         sender = PrivateKey.random()
         subsidizer = PrivateKey.random()
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(60)]
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(15)]
+        b = EarnBatch(sender, earns, subsidizer=subsidizer)
 
         kin_4_no_app_client._internal_client._response_cache.clear_all()
-        future = executor.submit(kin_4_no_app_client.submit_earn_batch, sender, all_earns, subsidizer=subsidizer)
+        future = executor.submit(kin_4_no_app_client.submit_earn_batch, b)
 
         self._set_v4_get_service_config_resp_no_subsidizer(grpc_channel)
 
-        reqs = []
-        tx_ids = []
+        self._set_v4_get_recent_blockhash_resp(grpc_channel)
+        tx_id = b'somesig'
+        resp = tx_pb_v4.SubmitTransactionResponse(
+            result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
+            signature=model_pb_v4.TransactionSignature(value=tx_id),
+        )
+        req = self._set_v4_submit_tx_resp(grpc_channel, resp)
 
-        # this test results in 19 earns per submitted batch
-        for i in range(4):
-            self._set_v4_get_recent_blockhash_resp(grpc_channel)
-            tx_id = f'somesig{i}'.encode()
-            resp = tx_pb_v4.SubmitTransactionResponse(
-                result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
-                signature=model_pb_v4.TransactionSignature(value=tx_id),
-            )
-            reqs.append(self._set_v4_submit_tx_resp(grpc_channel, resp))
-            tx_ids.append(tx_id)
+        tx = Transaction.unmarshal(req.transaction.value)
+        assert len(tx.signatures) == 2
+        assert subsidizer.public_key.verify(tx.message.marshal(), tx.signatures[0])
+        assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
 
-        earn_batches = partition(all_earns, 19)
-        for idx, req in enumerate(reqs):
-            tx = Transaction.unmarshal(req.transaction.value)
-            assert len(tx.signatures) == 2
-            assert subsidizer.public_key.verify(tx.message.marshal(), tx.signatures[0])
-            assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        for instruction_idx, earn in enumerate(earns):
+            transfer = decompile_transfer(tx.message, instruction_idx, _token_program)
+            assert transfer.source == sender.public_key
+            assert transfer.dest == earn.destination
+            assert transfer.owner == sender.public_key
+            assert transfer.amount == earn.quarks
 
-            for instruction_idx, earn in enumerate(earn_batches[idx]):
-                transfer = decompile_transfer(tx.message, instruction_idx, _token_program)
-                assert transfer.source == sender.public_key
-                assert transfer.dest == earn.destination
-                assert transfer.owner == sender.public_key
-                assert transfer.amount == earn.quarks
+        assert len(req.invoice_list.invoices) == 0
 
-            assert len(req.invoice_list.invoices) == 0
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 60
-        assert len(batch_earn_result.failed) == 0
+        result = future.result()
+        assert result.tx_id == tx_id
+        assert not result.tx_error
+        assert not result.earn_errors
 
     def test_kin_4_submit_earn_batch_memo(self, grpc_channel, executor, kin_4_no_app_client):
         sender = PrivateKey.random()
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(60)]
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(15)]
+        b = EarnBatch(sender, earns, memo='somememo')
 
         kin_4_no_app_client._internal_client._response_cache.clear_all()
-        future = executor.submit(kin_4_no_app_client.submit_earn_batch, sender, all_earns, memo='somememo')
+        future = executor.submit(kin_4_no_app_client.submit_earn_batch, b)
 
         self._set_v4_get_service_config_resp(grpc_channel)
 
-        reqs = []
-        tx_ids = []
+        self._set_v4_get_recent_blockhash_resp(grpc_channel)
+        tx_id = b'somesig'
+        resp = tx_pb_v4.SubmitTransactionResponse(
+            result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
+            signature=model_pb_v4.TransactionSignature(value=tx_id),
+        )
+        req = self._set_v4_submit_tx_resp(grpc_channel, resp)
 
-        # this test results in 19 earns per submitted batch because of the memo
-        for i in range(4):
-            self._set_v4_get_recent_blockhash_resp(grpc_channel)
-            tx_id = f'somesig{i}'.encode()
-            resp = tx_pb_v4.SubmitTransactionResponse(
-                result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
-                signature=model_pb_v4.TransactionSignature(value=tx_id),
-            )
-            reqs.append(self._set_v4_submit_tx_resp(grpc_channel, resp))
-            tx_ids.append(tx_id)
+        tx = Transaction.unmarshal(req.transaction.value)
+        assert len(tx.signatures) == 2
+        assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
+        assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
 
-        earn_batches = partition(all_earns, 19)
-        for idx, req in enumerate(reqs):
-            tx = Transaction.unmarshal(req.transaction.value)
-            assert len(tx.signatures) == 2
-            assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-            assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        m = decompile_memo(tx.message, 0)
+        assert m.data.decode('utf-8') == 'somememo'
 
-            m = decompile_memo(tx.message, 0)
-            assert m.data.decode('utf-8') == 'somememo'
+        for instruction_idx, earn in enumerate(earns):
+            transfer = decompile_transfer(tx.message, instruction_idx + 1, _token_program)
+            assert transfer.source == sender.public_key
+            assert transfer.dest == earn.destination
+            assert transfer.owner == sender.public_key
+            assert transfer.amount == earn.quarks
 
-            for instruction_idx, earn in enumerate(earn_batches[idx]):
-                transfer = decompile_transfer(tx.message, instruction_idx + 1, _token_program)
-                assert transfer.source == sender.public_key
-                assert transfer.dest == earn.destination
-                assert transfer.owner == sender.public_key
-                assert transfer.amount == earn.quarks
+        assert len(req.invoice_list.invoices) == 0
 
-            assert len(req.invoice_list.invoices) == 0
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 60
-        assert len(batch_earn_result.failed) == 0
+        result = future.result()
+        assert result.tx_id == tx_id
+        assert not result.tx_error
+        assert not result.earn_errors
 
     def test_kin_4_submit_earn_batch_with_invoices(self, grpc_channel, executor, kin_4_client):
         sender = PrivateKey.random()
         invoice = Invoice([LineItem('title1', 100000, 'description1', b'somesku')])
-        all_earns = [Earn(PrivateKey.random().public_key, i,
-                          invoice=invoice) for i in range(60)]
+        earns = [Earn(PrivateKey.random().public_key, i,
+                      invoice=invoice) for i in range(15)]
+        b = EarnBatch(sender, earns)
 
         kin_4_client._internal_client._response_cache.clear_all()
-        future = executor.submit(kin_4_client.submit_earn_batch, sender, all_earns)
+        future = executor.submit(kin_4_client.submit_earn_batch, b)
 
         self._set_v4_get_service_config_resp(grpc_channel)
 
-        reqs = []
-        tx_ids = []
+        self._set_v4_get_recent_blockhash_resp(grpc_channel)
+        tx_id = b'somesig'
+        resp = tx_pb_v4.SubmitTransactionResponse(
+            result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
+            signature=model_pb_v4.TransactionSignature(value=tx_id),
+        )
+        req = self._set_v4_submit_tx_resp(grpc_channel, resp)
 
-        # this test results in 18 earns per submitted batch because of the memo
-        for i in range(4):
-            self._set_v4_get_recent_blockhash_resp(grpc_channel)
-            tx_id = f'somesig{i}'.encode()
-            resp = tx_pb_v4.SubmitTransactionResponse(
-                result=tx_pb_v4.SubmitTransactionResponse.Result.OK,
-                signature=model_pb_v4.TransactionSignature(value=tx_id),
-            )
-            reqs.append(self._set_v4_submit_tx_resp(grpc_channel, resp))
-            tx_ids.append(tx_id)
+        tx = Transaction.unmarshal(req.transaction.value)
+        assert len(tx.signatures) == 2
+        assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
+        assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
 
-        earn_batches = partition(all_earns, 18)
-        for idx, req in enumerate(reqs):
-            tx = Transaction.unmarshal(req.transaction.value)
-            assert len(tx.signatures) == 2
-            assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-            assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
+        m = decompile_memo(tx.message, 0)
+        il = InvoiceList([invoice] * len(earns))
+        expected_memo = AgoraMemo.new(1, TransactionType.EARN, 1, il.get_sha_224_hash()).val
+        assert m.data == base64.b64encode(expected_memo)
 
-            m = decompile_memo(tx.message, 0)
-            il = InvoiceList([invoice] * len(earn_batches[idx]))
-            expected_memo = AgoraMemo.new(1, TransactionType.EARN, 1, il.get_sha_224_hash()).val
-            assert m.data == base64.b64encode(expected_memo)
+        for instruction_idx, earn in enumerate(earns):
+            transfer = decompile_transfer(tx.message, instruction_idx + 1, _token_program)
+            assert transfer.source == sender.public_key
+            assert transfer.dest == earn.destination
+            assert transfer.owner == sender.public_key
+            assert transfer.amount == earn.quarks
 
-            for instruction_idx, earn in enumerate(earn_batches[idx]):
-                transfer = decompile_transfer(tx.message, instruction_idx + 1, _token_program)
-                assert transfer.source == sender.public_key
-                assert transfer.dest == earn.destination
-                assert transfer.owner == sender.public_key
-                assert transfer.amount == earn.quarks
+        assert len(req.invoice_list.invoices) == len(earns)
 
-            assert len(req.invoice_list.invoices) == len(earn_batches[idx])
-
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 60
-        assert len(batch_earn_result.failed) == 0
+        result = future.result()
+        assert result.tx_id == tx_id
+        assert not result.tx_error
+        assert not result.earn_errors
 
     def test_kin_4_submit_earn_batch_with_acc_resolution(self, grpc_channel, executor, kin_4_no_app_client):
         sender = PrivateKey.random()
         resolved_sender = PrivateKey.random().public_key
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(10)]
-        resolved_destinations = [PrivateKey.random().public_key for _ in all_earns]
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(10)]
+        resolved_destinations = [PrivateKey.random().public_key for _ in earns]
+        b = EarnBatch(sender, earns)
 
         kin_4_no_app_client._internal_client._response_cache.clear_all()
-        future = executor.submit(kin_4_no_app_client.submit_earn_batch, sender, all_earns)
+        future = executor.submit(kin_4_no_app_client.submit_earn_batch, b)
 
         self._set_v4_get_service_config_resp(grpc_channel)
 
@@ -1992,7 +1852,7 @@ class TestAgoraClient:
         assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
         assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
 
-        for idx, earn in enumerate(all_earns):
+        for idx, earn in enumerate(earns):
             transfer = decompile_transfer(tx.message, idx, _token_program)
             assert transfer.source == resolved_sender
             assert transfer.dest == resolved_destinations[idx]
@@ -2001,17 +1861,19 @@ class TestAgoraClient:
 
         assert len(req.invoice_list.invoices) == 0
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 10
-        assert len(batch_earn_result.failed) == 0
+        result = future.result()
+        assert result.tx_id == b'somesig'
+        assert not result.tx_error
+        assert not result.earn_errors
 
     def test_kin_4_submit_earn_batch_failed_acc_resolution_exact(self, grpc_channel, executor, kin_4_no_app_client):
         sender = PrivateKey.random()
-        all_earns = [Earn(PrivateKey.random().public_key, i) for i in range(10)]
+        earns = [Earn(PrivateKey.random().public_key, i) for i in range(10)]
+        b = EarnBatch(sender, earns)
 
         kin_4_no_app_client._internal_client._response_cache.clear_all()
         future = executor.submit(
-            kin_4_no_app_client.submit_earn_batch, sender, all_earns, sender_resolution=AccountResolution.EXACT,
+            kin_4_no_app_client.submit_earn_batch, b, sender_resolution=AccountResolution.EXACT,
             dest_resolution=AccountResolution.EXACT,
         )
 
@@ -2022,6 +1884,7 @@ class TestAgoraClient:
             result=tx_pb_v4.SubmitTransactionResponse.Result.FAILED,
             transaction_error=model_pb_v4.TransactionError(
                 reason=model_pb_v4.TransactionError.Reason.INVALID_ACCOUNT,
+                instruction_index=1
             ),
             signature=model_pb_v4.TransactionSignature(value=b'failedsig')
         )
@@ -2033,7 +1896,7 @@ class TestAgoraClient:
         assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
         assert sender.public_key.verify(tx.message.marshal(), tx.signatures[1])
 
-        for idx, earn in enumerate(all_earns):
+        for idx, earn in enumerate(earns):
             transfer = decompile_transfer(tx.message, idx, _token_program)
             assert transfer.source == sender.public_key
             assert transfer.dest == earn.destination
@@ -2042,58 +1905,12 @@ class TestAgoraClient:
 
         assert len(req.invoice_list.invoices) == 0
 
-        batch_earn_result = future.result()
-        assert len(batch_earn_result.succeeded) == 0
-        assert len(batch_earn_result.failed) == 10
-        for idx, result in enumerate(batch_earn_result.failed):
-            assert result.earn == all_earns[idx]
-            assert result.tx_id == b'failedsig'
-            assert isinstance(result.error, AccountNotFoundError)
-
-    @pytest.mark.parametrize(
-        "has_separate_sender, has_agora_memo, has_text_memo",
-        [
-            (False, False, False),
-            (False, False, True),
-            (False, True, False),
-            (True, False, False),
-            (True, False, True),
-            (True, True, False),
-        ]
-    )
-    def test_estimate_earn_batch_tx_size(self, kin_4_no_app_client, has_separate_sender, has_agora_memo, has_text_memo):
-        subsidizer = PrivateKey.random()
-        token_program = PrivateKey.random().public_key
-
-        owner = PrivateKey.random()
-        earns = [Earn(PrivateKey.random().public_key, i) for i in range(20)]
-        transfer_sender = PrivateKey.random() if has_separate_sender else None
-        agora_memo = AgoraMemo.new(1, TransactionType.NONE, 1, b'') if has_agora_memo else None
-        text_memo = "1-text" if has_text_memo else None
-
-        for i in range(1, len(earns)):
-            batch = earns[:i]
-            instructions = []
-
-            if has_agora_memo:
-                instructions.append(memo_instruction(base64.b64encode(agora_memo.val).decode('utf-8')))
-            elif has_text_memo:
-                instructions.append(memo_instruction(text_memo))
-
-            sender = transfer_sender if transfer_sender else owner
-            instructions += [
-                transfer(sender.public_key, earn.destination, owner.public_key, earn.quarks, token_program)
-                for earn in batch]
-
-            tx = solana.Transaction.new(subsidizer.public_key, instructions)
-            tx.sign([subsidizer, owner])
-            est = Client._estimate_earn_batch_tx_size(
-                batch,
-                has_separate_sender=has_separate_sender,
-                has_agora_memo=has_agora_memo,
-                memo=text_memo)
-
-            assert est == len(tx.marshal())
+        result = future.result()
+        assert result.tx_id == b'failedsig'
+        assert isinstance(result.tx_error, AccountNotFoundError)
+        assert len(result.earn_errors) == 1
+        assert result.earn_errors[0].earn_index == 1
+        assert isinstance(result.earn_errors[0].error, AccountNotFoundError)
 
     @staticmethod
     def _set_v4_create_account_resp(

@@ -4,7 +4,11 @@ from typing import List, Optional
 from agoraapi.common.v3 import model_pb2 as model_pb
 from agoraapi.common.v4 import model_pb2 as model_pb_v4
 from kin_base import stellarxdr
+from kin_base import transaction_envelope as te, operation
 from kin_base.stellarxdr import StellarXDR_const
+
+from agora import solana
+from agora.solana import decompile_transfer
 
 
 class Error(Exception):
@@ -197,11 +201,11 @@ class TransactionErrors:
         succeeded, only that it was not the reason that the transaction failed.
     """
 
-    def __init__(self, *args, tx_error: Optional[Error] = None, op_errors: Optional[List[Optional[Error]]] = None,
-                 **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, tx_error: Optional[Error] = None, op_errors: Optional[List[Optional[Error]]] = None,
+                 payment_errors: Optional[List[Optional[Error]]] = None):
         self.tx_error = tx_error
         self.op_errors = op_errors if op_errors else []
+        self.payment_errors = payment_errors if payment_errors else []
 
     @staticmethod
     def from_result(result_xdr: bytes) -> Optional['TransactionErrors']:
@@ -253,7 +257,8 @@ class TransactionErrors:
                 else:
                     op_errors.append(Error(f'op of type {op_result.tr.type} failed'))
 
-            return TransactionErrors(tx_error=Error('transaction failed'), op_errors=op_errors)
+            return TransactionErrors(tx_error=Error('transaction failed'), op_errors=op_errors,
+                                     payment_errors=op_errors)
 
         if tx_code == StellarXDR_const.txMISSING_OPERATION:
             return TransactionErrors(tx_error=TransactionMalformedError('the transaction has no operations'))
@@ -291,3 +296,87 @@ class TransactionErrors:
         if tx_error.reason == model_pb_v4.TransactionError.INVALID_ACCOUNT:
             return TransactionErrors(tx_error=AccountNotFoundError())
         return TransactionErrors(tx_error=Error(f'unknown error: {tx_error}'))
+
+    @staticmethod
+    def from_solana_tx(tx: solana.Transaction, tx_error: model_pb_v4.TransactionError) -> Optional['TransactionErrors']:
+        err = error_from_proto(tx_error)
+        if not err:
+            return None
+
+        errors = TransactionErrors(err)
+        if tx_error.instruction_index >= 0:
+            errors.op_errors = [None] * len(tx.message.instructions)
+            errors.op_errors[tx_error.instruction_index] = err
+
+            paymentIndex = tx_error.instruction_index
+            paymentCount = 0
+
+            for idx, instruction in enumerate(tx.message.instructions):
+                try:
+                    decompile_transfer(tx.message, idx)
+                    paymentCount += 1
+                except ValueError:
+                    if idx < tx_error.instruction_index:
+                        paymentIndex -= 1
+                    elif idx == tx_error.instruction_index:
+                        paymentIndex = -1
+
+            if paymentIndex > -1:
+                errors.payment_errors = [None] * paymentCount
+                errors.payment_errors[paymentIndex] = err
+
+        return errors
+
+    @staticmethod
+    def from_stellar_tx(env: te.TransactionEnvelope, tx_error: model_pb_v4.TransactionError) -> Optional[
+        'TransactionErrors']:
+        err = error_from_proto(tx_error)
+        if not err:
+            return None
+
+        errors = TransactionErrors(err)
+        if tx_error.instruction_index >= 0:
+            errors.op_errors = [None] * len(env.tx.operations)
+            errors.op_errors[tx_error.instruction_index] = err
+
+            paymentIndex = tx_error.instruction_index
+            paymentCount = 0
+
+            for idx, op in enumerate(env.tx.operations):
+                if isinstance(op, operation.Payment):
+                    paymentCount += 1
+                elif idx < tx_error.instruction_index:
+                    paymentIndex -= 1
+                elif idx == tx_error.instruction_index:
+                    paymentIndex = -1
+
+            if paymentIndex > -1:
+                errors.payment_errors = [None] * paymentCount
+                errors.payment_errors[paymentIndex] = err
+
+        return errors
+
+
+def error_from_proto(tx_error: model_pb_v4.TransactionError) -> Optional[Error]:
+    if tx_error.reason == model_pb_v4.TransactionError.NONE:
+        return None
+    if tx_error.reason == model_pb_v4.TransactionError.UNAUTHORIZED:
+        return InvalidSignatureError()
+    if tx_error.reason == model_pb_v4.TransactionError.BAD_NONCE:
+        return BadNonceError()
+    if tx_error.reason == model_pb_v4.TransactionError.INSUFFICIENT_FUNDS:
+        return InsufficientBalanceError()
+    if tx_error.reason == model_pb_v4.TransactionError.INVALID_ACCOUNT:
+        return AccountNotFoundError()
+    return Error(f'unknown tx error reason: {tx_error.reason}')
+
+
+def invoice_error_from_proto(invoice_error: model_pb.InvoiceError) -> Error:
+    if invoice_error.reason == model_pb.InvoiceError.Reason.ALREADY_PAID:
+        return AlreadyPaidError()
+    if invoice_error.reason == model_pb.InvoiceError.Reason.WRONG_DESTINATION:
+        return WrongDestinationError()
+    if invoice_error.reason == model_pb.InvoiceError.Reason.SKU_NOT_FOUND:
+        return SkuNotFoundError()
+
+    return Error(f'unknown invoice error reason: {invoice_error.reason}')

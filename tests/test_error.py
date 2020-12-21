@@ -1,11 +1,20 @@
+import base64
+
 import pytest
 from agoraapi.common.v3 import model_pb2 as model_pb
+from agoraapi.common.v4 import model_pb2 as model_pbv4
+from kin_base import transaction_envelope as te
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
+from agora import solana
 from agora.error import AccountExistsError, BadNonceError, DestinationDoesNotExistError, InsufficientBalanceError, \
     InsufficientFeeError, InvalidSignatureError, SenderDoesNotExistError, TransactionMalformedError, \
-    InvoiceErrorReason, Error, TransactionErrors
-from tests.utils import gen_create_op_result, gen_payment_op_result, gen_merge_op_result, gen_result_xdr
+    InvoiceErrorReason, Error, TransactionErrors, AccountNotFoundError, error_from_proto, AlreadyPaidError, \
+    SkuNotFoundError, WrongDestinationError, invoice_error_from_proto
+from agora.model import TransactionType, AgoraMemo
+from agora.solana import memo, token
+from tests.utils import gen_create_op_result, gen_payment_op_result, gen_merge_op_result, gen_result_xdr, generate_keys, \
+    gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_create_op, gen_hash_memo
 
 
 class TestExceptions:
@@ -115,3 +124,114 @@ class TestTransactionError:
         assert not te.op_errors[0]
         assert isinstance(te.op_errors[1], TransactionMalformedError)
         assert isinstance(te.op_errors[2], InsufficientBalanceError)
+
+    @pytest.mark.parametrize(
+        "reason, exception_type",
+        [
+            (model_pbv4.TransactionError.Reason.NONE, type(None)),
+            (model_pbv4.TransactionError.Reason.UNAUTHORIZED, InvalidSignatureError),
+            (model_pbv4.TransactionError.Reason.BAD_NONCE, BadNonceError),
+            (model_pbv4.TransactionError.Reason.INSUFFICIENT_FUNDS, InsufficientBalanceError),
+            (model_pbv4.TransactionError.Reason.INVALID_ACCOUNT, AccountNotFoundError),
+
+        ]
+    )
+    def test_error_from_proto(self, reason, exception_type):
+        e = error_from_proto(model_pbv4.TransactionError(reason=reason))
+        assert isinstance(e, exception_type)
+
+    @pytest.mark.parametrize(
+        "reason, exception_type",
+        [
+            (model_pb.InvoiceError.Reason.UNKNOWN, Error),
+            (model_pb.InvoiceError.Reason.ALREADY_PAID, AlreadyPaidError),
+            (model_pb.InvoiceError.Reason.WRONG_DESTINATION, WrongDestinationError),
+            (model_pb.InvoiceError.Reason.SKU_NOT_FOUND, SkuNotFoundError),
+        ]
+    )
+    def test_error_from_proto(self, reason, exception_type):
+        e = invoice_error_from_proto(model_pb.InvoiceError(reason=reason))
+        assert isinstance(e, exception_type)
+
+    @pytest.mark.parametrize(
+        "instruction_index, exp_op_index, exp_payment_index",
+        [
+            (1, 1, 0),
+            (0, 0, -1),
+        ]
+    )
+    def test_errors_from_solana_tx(self, instruction_index, exp_op_index, exp_payment_index):
+        keys = [pk.public_key for pk in generate_keys(4)]
+        tx = solana.Transaction.new(
+            keys[0],
+            [
+                memo.memo_instruction('data'),
+                token.transfer(keys[1], keys[2], keys[1], 100, keys[3]),
+                token.set_authority(keys[1], keys[1], token.AuthorityType.CloseAccount, keys[3], keys[2])
+            ]
+        )
+
+        errors = TransactionErrors.from_solana_tx(tx, model_pbv4.TransactionError(
+            reason=model_pbv4.TransactionError.Reason.INSUFFICIENT_FUNDS,
+            instruction_index=instruction_index,
+        ))
+        assert isinstance(errors.tx_error, InsufficientBalanceError)
+        assert len(errors.op_errors) == 3
+        for i in range(0, len(errors.op_errors)):
+            if i == exp_op_index:
+                assert isinstance(errors.op_errors[i], InsufficientBalanceError)
+            else:
+                assert not errors.op_errors[i]
+
+        if exp_payment_index > -1:
+            assert len(errors.payment_errors) == 1
+            for i in range(0, len(errors.payment_errors)):
+                if i == exp_payment_index:
+                    assert isinstance(errors.payment_errors[i], InsufficientBalanceError)
+                else:
+                    assert not errors.payment_errors[i]
+        else:
+            assert not errors.payment_errors
+
+    @pytest.mark.parametrize(
+        "instruction_index, exp_op_index, exp_payment_index",
+        [
+            (2, 2, 1),
+            (3, 3, -1),
+        ]
+    )
+    def test_errors_from_stellar_tx(self, instruction_index, exp_op_index, exp_payment_index):
+        acc1 = gen_account_id()
+        acc2 = gen_account_id()
+        operations = [
+            gen_create_op(acc1, acc2),
+            gen_payment_op(acc2, amount=15),
+            gen_payment_op(acc1, amount=15),
+            gen_create_op(acc1, acc2),
+        ]
+        memo = AgoraMemo.new(1, TransactionType.EARN, 1, b'')
+        hash_memo = gen_hash_memo(memo.val)
+        envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations, hash_memo)
+        env = te.TransactionEnvelope.from_xdr(base64.b64encode(envelope_xdr))
+
+        errors = TransactionErrors.from_stellar_tx(env, model_pbv4.TransactionError(
+            reason=model_pbv4.TransactionError.Reason.INSUFFICIENT_FUNDS,
+            instruction_index=instruction_index,
+        ))
+        assert isinstance(errors.tx_error, InsufficientBalanceError)
+        assert len(errors.op_errors) == 4
+        for i in range(0, len(errors.op_errors)):
+            if i == exp_op_index:
+                assert isinstance(errors.op_errors[i], InsufficientBalanceError)
+            else:
+                assert not errors.op_errors[i]
+
+        if exp_payment_index > -1:
+            assert len(errors.payment_errors) == 2
+            for i in range(0, len(errors.payment_errors)):
+                if i == exp_payment_index:
+                    assert isinstance(errors.payment_errors[i], InsufficientBalanceError)
+                else:
+                    assert not errors.payment_errors[i]
+        else:
+            assert not errors.payment_errors

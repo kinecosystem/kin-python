@@ -11,6 +11,7 @@ from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb_v3, transac
 from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4, transaction_service_pb2_grpc as tx_pb_grpc_v4
 from kin_base import transaction_envelope as te
 
+from agora import solana
 from agora.cache.cache import LRUCache
 from agora.client.utils import _generate_token_account
 from agora.error import BlockchainVersionError, AccountExistsError, AccountNotFoundError, TransactionRejectedError, \
@@ -31,10 +32,10 @@ _SERVICE_CONFIG_CACHE_KEY = b'GetServiceConfig'
 class SubmitTransactionResult:
     def __init__(self, tx_id: Optional[bytes] = None,
                  invoice_errors: Optional[List[model_pb_v3.InvoiceError]] = None,
-                 tx_error: Optional[TransactionErrors] = None):
+                 errors: Optional[TransactionErrors] = None):
         self.tx_id = tx_id if tx_id else bytes(32)
         self.invoice_errors = invoice_errors if invoice_errors else []
-        self.tx_error = tx_error
+        self.errors = errors
 
 
 class InternalClient:
@@ -203,7 +204,7 @@ class InternalClient:
             elif resp.result == tx_pb_v3.SubmitTransactionResponse.Result.INVOICE_ERROR:
                 result.invoice_errors = resp.invoice_errors
             elif resp.result == tx_pb_v3.SubmitTransactionResponse.Result.FAILED:
-                result.tx_error = TransactionErrors.from_result(resp.result_xdr)
+                result.errors = TransactionErrors.from_result(resp.result_xdr)
             elif resp.result != tx_pb_v3.SubmitTransactionResponse.Result.OK:
                 raise Error(f'unexpected result from agora: {resp.result}')
 
@@ -222,6 +223,7 @@ class InternalClient:
         """
 
         token_account_key = _generate_token_account(private_key)
+
         def _create():
             nonlocal subsidizer
 
@@ -338,18 +340,21 @@ class InternalClient:
         return TransactionData(tx_id, TransactionState.from_proto_v4(resp.state))
 
     def submit_solana_transaction(
-        self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None,
-        commitment: Optional[Commitment] = Commitment.SINGLE
+        self, tx: solana.Transaction, invoice_list: Optional[InvoiceList] = None,
+        commitment: Optional[Commitment] = Commitment.SINGLE, dedupe_id: Optional[bytes] = None
     ) -> SubmitTransactionResult:
         """Submit a Solana transaction to Agora.
 
-        :param tx_bytes: The transaction, in bytes.
+        :param tx: The Solana transaction.
         :param invoice_list: (optional) An :class:`InvoiceList <agora.model.invoice.InvoiceList>` to associate with the
             transaction
+        :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use.
+        :param dedupe_id: The dedupe ID to use for the transaction submission
         :return: A :class:`SubmitTransactionResult <agora.client.internal.SubmitTransactionResult>` object.
         """
 
         attempt = 0
+        tx_bytes = tx.marshal()
 
         def _submit():
             nonlocal attempt
@@ -361,6 +366,7 @@ class InternalClient:
                 ),
                 invoice_list=invoice_list.to_proto() if invoice_list else None,
                 commitment=commitment.to_proto(),
+                dedupe_id=dedupe_id,
             )
             resp = self._transaction_stub_v4.SubmitTransaction(req, metadata=self._metadata,
                                                                timeout=_GRPC_TIMEOUT_SECONDS)
@@ -378,7 +384,7 @@ class InternalClient:
                 if attempt == 1:
                     raise AlreadySubmittedError()
             elif resp.result == tx_pb_v4.SubmitTransactionResponse.Result.FAILED:
-                result.tx_error = TransactionErrors.from_proto_error(resp.transaction_error)
+                result.errors = TransactionErrors.from_solana_tx(tx, resp.transaction_error)
             elif resp.result == tx_pb_v4.SubmitTransactionResponse.Result.INVOICE_ERROR:
                 result.invoice_errors = resp.invoice_errors
             elif resp.result != tx_pb_v4.SubmitTransactionResponse.Result.OK:

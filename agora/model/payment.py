@@ -33,7 +33,7 @@ class Payment:
     def __init__(
         self, sender: PrivateKey, destination: PublicKey, tx_type: TransactionType, quarks: int,
         channel: Optional[PrivateKey] = None, invoice: Optional[Invoice] = None, memo: Optional[str] = None,
-        subsidizer: Optional[PrivateKey] = None,
+        subsidizer: Optional[PrivateKey] = None, dedupe_id: Optional[bytes] = None,
     ):
         self.sender = sender
         self.destination = destination
@@ -47,6 +47,7 @@ class Payment:
 
         self.invoice = invoice
         self.memo = memo
+        self.dedupe_id = dedupe_id
 
     def __eq__(self, other):
         if not isinstance(other, Payment):
@@ -65,7 +66,7 @@ class Payment:
         return f'{self.__class__.__name__}(' \
                f'sender={self.sender!r}, destination={self.destination!r}, tx_type={self.tx_type!r}, ' \
                f'quarks={self.quarks}, channel={self.channel!r}, invoice={self.invoice!r}, memo={self.memo!r}), ' \
-               f'subsidizer={self.subsidizer!r}'
+               f'subsidizer={self.subsidizer!r}, dedupe_id={self.dedupe_id}'
 
 
 class ReadOnlyPayment:

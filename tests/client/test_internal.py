@@ -12,6 +12,7 @@ from agoraapi.common.v3 import model_pb2 as model_pb_v3
 from agoraapi.common.v4 import model_pb2 as model_pb_v4
 from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4
 
+from agora import solana
 from agora.client.client import _NON_RETRIABLE_ERRORS
 from agora.client.internal import InternalClient
 from agora.client.utils import _generate_token_account
@@ -337,8 +338,8 @@ class TestInternalClientV4:
         assert not tx_data.error
 
     def test_submit_transaction(self, grpc_channel, executor, no_retry_client):
-        tx_bytes = b'somebytes'
-        future = executor.submit(no_retry_client.submit_solana_transaction, tx_bytes)
+        tx = self._generate_tx()
+        future = executor.submit(no_retry_client.submit_solana_transaction, tx)
 
         tx_sig = b'somesig'
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -346,37 +347,37 @@ class TestInternalClientV4:
             signature=model_pb_v4.TransactionSignature(value=tx_sig)
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         result = future.result()
         assert result.tx_id == tx_sig
-        assert not result.tx_error
+        assert not result.errors
         assert not result.invoice_errors
 
     def test_submit_transaction_already_submitted(self, grpc_channel, executor, retry_client):
-        tx_bytes = b'somebytes'
+        tx = self._generate_tx()
         tx_sig = b'somesig'
 
         # Receive ALREADY_SUBMITTED on first attempt - should result in an error
-        future = executor.submit(retry_client.submit_solana_transaction, tx_bytes)
+        future = executor.submit(retry_client.submit_solana_transaction, tx)
         resp = tx_pb_v4.SubmitTransactionResponse(
             result=tx_pb_v4.SubmitTransactionResponse.Result.ALREADY_SUBMITTED,
             signature=model_pb_v4.TransactionSignature(value=tx_sig)
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         with pytest.raises(AlreadySubmittedError):
             future.result()
 
-        future = executor.submit(retry_client.submit_solana_transaction, tx_bytes)
+        future = executor.submit(retry_client.submit_solana_transaction, tx)
 
         # Internal error first attempt: should retry
         md, req, rpc = grpc_channel.take_unary_unary(
             tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['SubmitTransaction']
         )
         rpc.terminate(tx_pb_v4.SubmitTransactionResponse(), (), grpc.StatusCode.INTERNAL, '')
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         # ALREADY_SUBMITTED second attempt: should look like a success
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -384,16 +385,16 @@ class TestInternalClientV4:
             signature=model_pb_v4.TransactionSignature(value=tx_sig)
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         result = future.result()
         assert result.tx_id == tx_sig
-        assert not result.tx_error
+        assert not result.errors
         assert not result.invoice_errors
 
     def test_submit_transaction_invoice_error(self, grpc_channel, executor, no_retry_client):
-        tx_bytes = b'somebytes'
-        future = executor.submit(no_retry_client.submit_solana_transaction, tx_bytes)
+        tx = self._generate_tx()
+        future = executor.submit(no_retry_client.submit_solana_transaction, tx)
 
         tx_sig = b'somesig'
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -413,16 +414,16 @@ class TestInternalClientV4:
             ],
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         result = future.result()
         assert result.tx_id == tx_sig
-        assert not result.tx_error
+        assert not result.errors
         assert result.invoice_errors == resp.invoice_errors
 
     def test_submit_transaction_rejected(self, grpc_channel, executor, no_retry_client):
-        tx_bytes = b'somebytes'
-        future = executor.submit(no_retry_client.submit_solana_transaction, tx_bytes)
+        tx = self._generate_tx()
+        future = executor.submit(no_retry_client.submit_solana_transaction, tx)
 
         tx_sig = b'somesig'
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -430,14 +431,14 @@ class TestInternalClientV4:
             signature=model_pb_v4.TransactionSignature(value=tx_sig)
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         with pytest.raises(TransactionRejectedError):
             future.result()
 
     def test_submit_transaction_payer_required(self, grpc_channel, executor, no_retry_client):
-        tx_bytes = b'somebytes'
-        future = executor.submit(no_retry_client.submit_solana_transaction, tx_bytes)
+        tx = self._generate_tx()
+        future = executor.submit(no_retry_client.submit_solana_transaction, tx)
 
         tx_sig = b'somesig'
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -445,14 +446,14 @@ class TestInternalClientV4:
             signature=model_pb_v4.TransactionSignature(value=tx_sig)
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         with pytest.raises(PayerRequiredError):
             future.result()
 
     def test_submit_transaction_failed(self, grpc_channel, executor, no_retry_client):
-        tx_bytes = b'somebytes'
-        future = executor.submit(no_retry_client.submit_solana_transaction, tx_bytes)
+        tx = self._generate_tx()
+        future = executor.submit(no_retry_client.submit_solana_transaction, tx)
 
         tx_sig = b'somesig'
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -463,18 +464,20 @@ class TestInternalClientV4:
             ),
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         result = future.result()
         assert result.tx_id == tx_sig
-        assert result.tx_error
-        assert isinstance(result.tx_error.tx_error, BadNonceError)
-        assert not result.tx_error.op_errors
+        assert result.errors
+        assert isinstance(result.errors.tx_error, BadNonceError)
+        assert len(result.errors.op_errors) == 1
+        assert isinstance(result.errors.op_errors[0], BadNonceError)
+        assert isinstance(result.errors.payment_errors[0], BadNonceError)
         assert not result.invoice_errors
 
     def test_submit_transaction_unexpected_result(self, grpc_channel, executor, no_retry_client):
-        tx_bytes = b'somebytes'
-        future = executor.submit(no_retry_client.submit_solana_transaction, tx_bytes)
+        tx = self._generate_tx()
+        future = executor.submit(no_retry_client.submit_solana_transaction, tx)
 
         tx_sig = b'somesig'
         resp = tx_pb_v4.SubmitTransactionResponse(
@@ -482,7 +485,7 @@ class TestInternalClientV4:
             signature=model_pb_v4.TransactionSignature(value=tx_sig),
         )
         req = self._set_submit_transaction_resp(grpc_channel, resp)
-        assert req.transaction.value == tx_bytes
+        assert req.transaction.value == tx.marshal()
 
         with pytest.raises(Error):
             future.result()
@@ -640,3 +643,13 @@ class TestInternalClientV4:
         assert len(md) == 3
         assert md[0] == user_agent(VERSION)
         assert md[1] == ('kin-version', '4')
+
+    @staticmethod
+    def _generate_tx():
+        sender, dest, owner = generate_keys(3)
+        return solana.Transaction.new(
+            _subsidizer,
+            [
+                token.transfer(sender, dest, owner, 0, _token_program)
+            ]
+        )

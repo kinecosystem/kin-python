@@ -1,55 +1,55 @@
 from typing import List, Optional
 
-from agora.model.earn import Earn
+from agora.error import Error
 
 
-class EarnResult:
-    """The :class:`EarnResult <EarnResult>` object, which contains the result of a submitted earn.
+class EarnError:
+    """The :class:`EarnError <EarnError>` object contains earn-specific details about why a submitted earn batch failed
 
-    :param earn: The originally submitted earn.
-    :param tx_id: (optional) The id of the transaction that was submitted, if one was submitted for this earn.
-        If omitted, it indicates that no transaction was submitted for this earn.
-    :param error: (optional) An Exception indicating why the earn failed. The absence of an error does not indicate that
-        the earn was submitted successfully, only that if it failed, either its transaction failed due to another earn,
-        or it was not submitted at all.
+    :param earn_index: The index of the earn the error pertains to
+    :param error: The error
     """
 
-    def __init__(self, earn: Earn, tx_id: bytes = None, error: Optional[Exception] = None):
-        self.earn = earn
-        self.tx_id = tx_id
+    def __init__(self, earn_index: int, error: Error):
+        self.earn_index = earn_index
         self.error = error
 
     def __eq__(self, other):
-        if not isinstance(other, EarnResult):
+        if not isinstance(other, EarnError):
             return False
 
-        return (self.earn == other.earn and
-                self.tx_id == other.tx_id and
+        return (self.earn_index == other.earn_index and
                 self.error == other.error)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'earn={self.earn!r}, tx_id={self.tx_id}, error={self.error!r})'
+               f'earn_index={self.earn_index}, error={self.error!r})'
 
 
-class BatchEarnResult:
+class EarnBatchResult:
     """The :class:`BatchEarnResult <BatchEarnResult>` object, which contains the results of a submitted earn batch.
 
-    :param succeeded: A list of :class:`EarnResult <EarnResult>` objects.
-    :param failed: A list of :class:`EarnResult <EarnResult>` objects.
+    :param tx_id: The id of the transaction that was submitted for the earn batch.
+    :param tx_error: (optional) An Error indicating why an earn batch failed. If tx_error is defined, the transaction
+        failed.
+    :param earn_errors: (optional) A List of any available earn-specific error information. May or may not be set if
+        tx_error is set.
     """
 
-    def __init__(self, succeeded: List[EarnResult], failed: List[EarnResult]):
-        self.succeeded = succeeded
-        self.failed = failed
+    def __init__(self, tx_id: bytes, tx_error: Optional[Error] = None, earn_errors: Optional[List[EarnError]] = None):
+        self.tx_id = tx_id
+        self.tx_error = tx_error
+        self.earn_errors = earn_errors
 
     def __eq__(self, other):
-        if not isinstance(other, BatchEarnResult):
+        if not isinstance(other, EarnBatchResult):
             return False
 
-        return (all(result == other.succeeded[idx] for idx, result in enumerate(self.succeeded)) and
-                all(result == other.failed[idx] for idx, result in enumerate(self.failed)))
+        return (self.tx_id == other.tx_id and
+                self.tx_error == other.tx_error and
+                all(earn_error == other.earn_errors[idx] for idx, earn_error in enumerate(self.earn_errors)))
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'succeeded={[s for s in self.succeeded]!r}, failed={[f for f in self.failed]!r})'
+               f'tx_id={self.tx_id}, tx_error={self.tx_error!r})' \
+               f'earn_errors={[e for e in self.earn_errors]!r})'

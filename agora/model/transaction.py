@@ -84,6 +84,7 @@ class TransactionData:
 
         tx_type = TransactionType.UNKNOWN
         memo = None
+        tx_errors = None
         if item.solana_transaction.value:
             solana_tx = solana.Transaction.unmarshal(item.solana_transaction.value)
             program_idx = solana_tx.message.instructions[0].program_index
@@ -95,6 +96,7 @@ class TransactionData:
                     tx_type = agora_memo.tx_type()
                 except ValueError:
                     memo = memo_data
+            tx_errors = TransactionErrors.from_solana_tx(solana_tx, item.transaction_error)
         elif item.stellar_transaction.envelope_xdr:
             env = te.TransactionEnvelope.from_xdr(base64.b64encode(item.stellar_transaction.envelope_xdr))
             tx = env.tx
@@ -107,6 +109,8 @@ class TransactionData:
             elif isinstance(tx.memo, stellar_memo.TextMemo):
                 memo = tx.memo.text.decode()
 
+            tx_errors = TransactionErrors.from_solana_tx(env, item.transaction_error)
+
         for idx, p in enumerate(item.payments):
             inv = il.invoices[idx] if il and il.invoices else None
             payments.append(ReadOnlyPayment(PublicKey(p.source.value), PublicKey(p.destination.value),
@@ -116,5 +120,5 @@ class TransactionData:
             item.transaction_id.value,
             TransactionState.from_proto_v4(state),
             payments,
-            error=TransactionErrors.from_proto_error(item.transaction_error) if item.transaction_error else None,
+            error=tx_errors,
         )

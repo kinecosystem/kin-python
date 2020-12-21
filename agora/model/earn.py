@@ -1,7 +1,7 @@
 from typing import Optional, List
 
-from agora.model.invoice import Invoice
 from agora.keys import PublicKey, PrivateKey
+from agora.model.invoice import Invoice
 
 
 class Earn:
@@ -45,13 +45,16 @@ class EarnBatch:
 
     """
 
-    def __init__(self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None,
-                 memo: Optional[str] = None, subsidizer: Optional[PrivateKey] = None):
+    def __init__(
+        self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None,
+        subsidizer: Optional[PrivateKey] = None, dedupe_id: Optional[bytes] = None
+    ):
         self.sender = sender
         self.earns = earns
         self.channel = channel
         self.memo = memo
         self.subsidizer = subsidizer
+        self.dedupe_id = dedupe_id
 
     def __eq__(self, other):
         if not isinstance(other, EarnBatch):
@@ -66,4 +69,4 @@ class EarnBatch:
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
                f'sender={self.sender!r}, earns={[e for e in self.earns]!r}, channel={self.channel!r}, ' \
-               f'memo={self.memo!r}, subsidizer={self.subsidizer!r})'
+               f'memo={self.memo!r}, subsidizer={self.subsidizer!r}), dedupe_id={self.dedupe_id}'

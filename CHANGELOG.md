@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## [0.5.0](https://github.com/kinecosystem/kin-python/releases/tag/0.5.0)
+- Add `dedupe_id` support on payments (`Client.submit_payment`) and earn batches (`Client.submit_earn_batch`)
+- `Client.submit_earn_batch` now supports submitting only a single transaction and up to 15 earns
+- `BatchEarnResult` has been replaced with `EarnBatchResult`, whichcontains `TxID`, `TxError` and `EarnErrors` due to the above changes
+- `Client.submit_earn_batch` now takes in an `earn_batch` argument instead of separate `sender`, `earns`, `channel`, `memo`, and `subsidizer` args
+- Add `payment_errors` to `TransactionErrors`
+- Add `AccountNotFoundError` to the default non-retriable error list. This should the decrease
+  latencies in situations where a Resolve() is required by about 8 seconds (with the
+  default retry configuration)
+
 ## [0.4.7](https://github.com/kinecosystem/kin-python/releases/tag/0.4.7)
 - Fix invoice list parsing in events webhook handler
 

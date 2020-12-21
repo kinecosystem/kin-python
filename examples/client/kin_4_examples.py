@@ -1,4 +1,5 @@
 import argparse
+import uuid
 
 import base58
 
@@ -6,6 +7,7 @@ from agora.client import Client, Environment
 from agora.error import AccountExistsError, Error, TransactionErrors
 from agora.keys import PrivateKey, PublicKey
 from agora.model import Payment, TransactionType, Earn
+from agora.model.earn import EarnBatch
 
 
 def submit_payment(p: Payment):
@@ -62,19 +64,47 @@ print(repr(tx_data))
 tx_id = submit_payment(Payment(sender, airdrop_source, TransactionType.NONE, int(1e5), memo='somememo'))
 print(f'submitted: {base58.b58encode(tx_id)}')
 
+# Send a payment of 1 Kin using dedupe ID
+payment = Payment(sender, airdrop_source, TransactionType.NONE, int(1e5), dedupe_id=uuid.uuid4().bytes)
+try:
+    tx_id = submit_payment(payment)
+except Exception as e:
+    # Safe to retry as is since dedupe_id was set
+    tx_id = submit_payment(payment)
+
+print(f'submitted: {base58.b58encode(tx_id)}')
+
 tx_data = client.get_transaction(tx_id)
 print(repr(tx_data))
 
 # Send earn batch
 earns = [Earn(airdrop_source, int(1e5)) for i in range(0, 5)]
-batch_result = client.submit_earn_batch(sender, earns)
-print(f'{len(batch_result.succeeded)} succeeded, {len(batch_result.failed)} failed')
-for result in batch_result.succeeded:
-    print(f'Sent 1 kin to {result.earn.destination.stellar_address} in transaction '
-          f'{base58.b58encode(result.tx_id)}')
-for result in batch_result.failed:
-    print(f'Failed to send 1 kin to {result.earn.destination.stellar_address} in transaction '
-          f'{base58.b58encode(result.tx_id)} (error: {repr(result.error)})')
+batch_result = client.submit_earn_batch(EarnBatch(sender, earns))
+if batch_result.tx_error:
+    print(f'{batch_result.tx_id} failed with error {repr(batch_result.tx_error)}')
+
+    if batch_result.earn_errors:
+        for e in batch_result.earn_errors:
+            print(f'earn {e.earn_index} failed with error {repr(e.error)}')
+else:
+    print(f'{batch_result.tx_id} submitted')
+
+# Send earn batch with dedupe_id
+batch = EarnBatch(sender, earns, dedupe_id=uuid.uuid4().bytes)
+try:
+    batch_result = client.submit_earn_batch(batch)
+except Exception as e:
+    # Safe to retry as is since dedupe_id was set
+    batch_result = client.submit_earn_batch(batch)
+
+if batch_result.tx_error:
+    print(f'{batch_result.tx_id} failed with error {repr(batch_result.tx_error)}')
+
+    if batch_result.earn_errors:
+        for e in batch_result.earn_errors:
+            print(f'earn {e.earn_index} failed with error {repr(e.error)}')
+else:
+    print(f'{batch_result.tx_id} submitted')
 
 # The client should be closed once it is no longer needed.
 client.close()

@@ -11,25 +11,24 @@ from agora.client.account.resolution import AccountResolution
 from agora.client.account.resolver import TokenAccountResolver
 from agora.client.environment import Environment
 from agora.client.internal import InternalClient, SubmitTransactionResult
-from agora.error import AccountExistsError, InvoiceError, InvoiceErrorReason, \
-    UnsupportedVersionError, TransactionMalformedError, SenderDoesNotExistError, InsufficientBalanceError, \
+from agora.error import AccountExistsError, InvoiceError, UnsupportedVersionError, TransactionMalformedError, \
+    SenderDoesNotExistError, InsufficientBalanceError, \
     DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
-    TransactionRejectedError, Error, AlreadyPaidError, \
-    WrongDestinationError, SkuNotFoundError, BlockchainVersionError, AccountNotFoundError, NoSubsidizerError, \
-    AlreadySubmittedError
+    TransactionRejectedError, Error, BlockchainVersionError, AccountNotFoundError, NoSubsidizerError, \
+    AlreadySubmittedError, invoice_error_from_proto
 from agora.keys import PrivateKey, PublicKey, ED25519_PUB_KEY_SIZE
 from agora.model.earn import Earn, EarnBatch
 from agora.model.invoice import InvoiceList
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
-from agora.model.result import BatchEarnResult, EarnResult
+from agora.model.result import EarnBatchResult, EarnError
 from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy
 from agora.solana import Commitment, memo_instruction, transfer
 from agora.solana.transaction import MAX_TX_SIZE, SIGNATURE_LENGTH, HASH_LENGTH
-from agora.utils import partition, quarks_to_kin
+from agora.utils import quarks_to_kin
 
 _SUPPORTED_VERSIONS = [2, 3, 4]
 
@@ -60,6 +59,7 @@ _KIN_2_ASSET_CODE = 'KIN'
 
 _NON_RETRIABLE_ERRORS = [
     AccountExistsError,
+    AccountNotFoundError,
     TransactionMalformedError,
     SenderDoesNotExistError,
     DestinationDoesNotExistError,
@@ -185,22 +185,16 @@ class BaseClient:
         raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement submit_payment')
 
     def submit_earn_batch(
-        self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None,
-        commitment: Optional[Commitment] = None, subsidizer: Optional[PrivateKey] = None,
+        self, batch: EarnBatch, commitment: Optional[Commitment] = None,
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
-    ) -> BatchEarnResult:
+    ) -> EarnBatchResult:
         """Submit multiple earn payments.
 
-        :param sender: The :class:`PrivateKey <agora.keys.PrivateKey>` of the sender
-        :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-        :param channel: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of a channel account to use as
-            the transaction source. If not set, the `sender` will be used as the source.
-        :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
-            will be applied.
+        :param batch: The :class:`EarnBatch <agora.model.earn.EarnBatch>` to submit. The number of earns in the
+            batch is limited to 15, which is roughly the max number of transfers that can fit inside a Solana
+            transaction.
         :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
-        :param subsidizer: (optional) The subsidizer to use for the create account transaction. The subsidizer will be
-            used both as the payer of the transaction. Only applicable for Kin 4 transactions.
         :param sender_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
             use for the sender account if the transaction fails due to an account error. Only applies for Kin 4
             transactions. Defaults to AccountResolution.PREFERRED.
@@ -345,7 +339,8 @@ class Client(BaseClient):
             if account_resolution == AccountResolution.PREFERRED:
                 token_accounts = self._token_account_resolver.resolve_token_accounts(public_key)
                 if token_accounts:
-                    return self._internal_client.get_solana_account_info(token_accounts[0], commitment=commitment).balance
+                    return self._internal_client.get_solana_account_info(token_accounts[0],
+                                                                         commitment=commitment).balance
             raise e
 
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
@@ -381,98 +376,74 @@ class Client(BaseClient):
                     dest_resolution=dest_resolution
                 )
 
-        if result.tx_error:
-            if len(result.tx_error.op_errors) > 0:
-                if len(result.tx_error.op_errors) != 1:
+        if result.errors:
+            if len(result.errors.op_errors) > 0:
+                if len(result.errors.op_errors) != 1:
                     raise Error(f'invalid number of operation errors, expected 0 or 1, got '
-                                f'{len(result.tx_error.op_errors)}')
-                raise result.tx_error.op_errors[0]
+                                f'{len(result.errors.op_errors)}')
+                raise result.errors.op_errors[0]
 
-            if result.tx_error.tx_error:
-                raise result.tx_error.tx_error
+            if result.errors.tx_error:
+                raise result.errors.tx_error
 
         if result.invoice_errors:
             if len(result.invoice_errors) != 1:
                 raise Error(f'invalid number of invoice errors, expected 0 or 1, got {len(result.invoice_errors)}')
 
-            if result.invoice_errors[0].reason == InvoiceErrorReason.ALREADY_PAID:
-                raise AlreadyPaidError()
-            if result.invoice_errors[0].reason == InvoiceErrorReason.WRONG_DESTINATION:
-                raise WrongDestinationError()
-            if result.invoice_errors[0].reason == InvoiceErrorReason.SKU_NOT_FOUND:
-                raise SkuNotFoundError()
-            raise Error(f'unknown invoice error: {result.invoice_errors[0].reason}')
+            raise invoice_error_from_proto(result.invoice_errors[0])
 
         return result.tx_id
 
     def submit_earn_batch(
-        self, sender: PrivateKey, earns: List[Earn], channel: Optional[bytes] = None, memo: Optional[str] = None,
-        commitment: Optional[Commitment] = None, subsidizer: Optional[PrivateKey] = None,
+        self, batch: EarnBatch, commitment: Optional[Commitment] = None,
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
-    ) -> BatchEarnResult:
+    ) -> EarnBatchResult:
         if self._kin_version not in _SUPPORTED_VERSIONS:
             raise UnsupportedVersionError
 
-        invoices = [earn.invoice for earn in earns if earn.invoice]
+        if len(batch.earns) == 0:
+            raise ValueError('earn batch must contain at least 1 earn')
+        if len(batch.earns) > 15:
+            raise ValueError('earn batch must not contain more than 15 earns')
+
+        invoices = [earn.invoice for earn in batch.earns if earn.invoice]
         if invoices:
             if self.app_index <= 0:
                 raise ValueError('cannot submit a payment with an invoice without an app index')
-            if len(invoices) != len(earns):
+            if len(invoices) != len(batch.earns):
                 raise ValueError('Either all or none of the earns must contain invoices')
-            if memo:
+            if batch.memo:
                 raise ValueError('Cannot use both text memo and invoices')
 
-        succeeded = []
-        failed = []
-
         if self._kin_version in [2, 3]:
-            use_stellar = True
-            earn_batches = partition(earns, 100)
-
-            service_config = None
-            commitment = None
+            submit_result = self._submit_stellar_earn_batch_tx(batch)
         else:
             service_config = self._internal_client.get_service_config()
-            if not service_config.subsidizer_account.value and not subsidizer:
+            if not service_config.subsidizer_account.value and not batch.subsidizer:
                 raise NoSubsidizerError()
 
             commitment = commitment if commitment else self._default_commitment
-            use_stellar = False
-            earn_batches = self._partition_earns_for_solana(earns, sender_resolution, memo=memo)
+            submit_result = self._resolve_and_submit_solana_earn_batch(batch, service_config, commitment=commitment,
+                                                                       sender_resolution=sender_resolution,
+                                                                       dest_resolution=dest_resolution)
 
-        for earn_batch in earn_batches:
-            batch = EarnBatch(sender, earn_batch, channel=channel, memo=memo, subsidizer=subsidizer)
-            try:
-                if use_stellar:
-                    result = self._submit_stellar_earn_batch_tx(batch)
-                else:
-                    result = self._resolve_and_submit_solana_earn_batch(batch, service_config, commitment=commitment,
-                                                                        sender_resolution=sender_resolution,
-                                                                        dest_resolution=dest_resolution)
-            except Error as e:
-                failed += [EarnResult(earn, error=e) for idx, earn in enumerate(earn_batch)]
-                break
+        result = EarnBatchResult(submit_result.tx_id)
+        if submit_result.errors:
+            result.tx_error = submit_result.errors.tx_error
 
-            if not result.tx_error:
-                succeeded += [EarnResult(earn, tx_id=result.tx_id) for earn in earn_batch]
-                continue
+            if submit_result.errors.payment_errors:
+                result.earn_errors = []
+                for idx, e in enumerate(submit_result.errors.payment_errors):
+                    if e:
+                        result.earn_errors.append(EarnError(idx, e))
+        elif submit_result.invoice_errors:
+            result.tx_error = TransactionRejectedError()
+            result.earn_errors = []
+            for invoice_error in submit_result.invoice_errors:
+                result.earn_errors.append(EarnError(invoice_error.op_index, invoice_error_from_proto(invoice_error)))
 
-            # At this point, the batch is considered failed
-            err = result.tx_error
-
-            if err.op_errors:
-                failed += [EarnResult(earn, tx_id=result.tx_id, error=err.op_errors[idx])
-                           for idx, earn in enumerate(earn_batch)]
-            else:
-                failed += [EarnResult(earn, tx_id=result.tx_id, error=err.tx_error)
-                           for idx, earn in enumerate(earn_batch)]
-            break
-
-        for earn in earns[len(succeeded) + len(failed):]:
-            failed.append(EarnResult(earn=earn))
-
-        return BatchEarnResult(succeeded=succeeded, failed=failed)
+        return result
 
     def close(self) -> None:
         self._grpc_channel.close()
@@ -551,7 +522,7 @@ class Client(BaseClient):
             raise NoSubsidizerError()
 
         result = self._submit_solana_payment_tx(payment, service_config, commitment)
-        if result.tx_error and isinstance(result.tx_error.tx_error, AccountNotFoundError):
+        if result.errors and isinstance(result.errors.tx_error, AccountNotFoundError):
             transfer_sender = None
             resubmit = False
 
@@ -580,7 +551,7 @@ class Client(BaseClient):
     ) -> SubmitTransactionResult:
         result = self._submit_solana_earn_batch_tx(batch, service_config, commitment)
 
-        if result.tx_error and isinstance(result.tx_error.tx_error, AccountNotFoundError):
+        if result.errors and isinstance(result.errors.tx_error, AccountNotFoundError):
             transfer_sender = None
             resubmit = False
 
@@ -632,7 +603,8 @@ class Client(BaseClient):
         else:
             signers = [payment.sender]
 
-        return self._sign_and_submit_solana_tx(signers, tx, commitment, invoice_list)
+        return self._sign_and_submit_solana_tx(signers, tx, commitment, invoice_list=invoice_list,
+                                               dedupe_id=payment.dedupe_id)
 
     def _submit_solana_earn_batch_tx(
         self, batch: EarnBatch, service_config: tx_pb.GetServiceConfigResponse, commitment: Commitment,
@@ -662,21 +634,22 @@ class Client(BaseClient):
         else:
             signers = [batch.sender]
 
-        return self._sign_and_submit_solana_tx(signers, tx, commitment, invoice_list=invoice_list)
+        return self._sign_and_submit_solana_tx(signers, tx, commitment, invoice_list=invoice_list,
+                                               dedupe_id=batch.dedupe_id)
 
     def _sign_and_submit_solana_tx(
         self, signers: List[PrivateKey], tx: solana.Transaction, commitment: Commitment,
-        invoice_list: Optional[InvoiceList] = None
+        invoice_list: Optional[InvoiceList] = None, dedupe_id: Optional[bytes] = None,
     ):
         def _get_blockhash_and_submit():
             recent_blockhash = self._internal_client.get_recent_blockhash().blockhash.value
             tx.set_blockhash(recent_blockhash)
             tx.sign(signers)
 
-            result = self._internal_client.submit_solana_transaction(tx.marshal(), invoice_list=invoice_list,
-                                                                     commitment=commitment)
-            if result.tx_error and isinstance(result.tx_error.tx_error, BadNonceError):
-                raise result.tx_error.tx_error
+            result = self._internal_client.submit_solana_transaction(tx, invoice_list=invoice_list,
+                                                                     commitment=commitment, dedupe_id=dedupe_id)
+            if result.errors and isinstance(result.errors.tx_error, BadNonceError):
+                raise result.errors.tx_error
 
             return result
 
@@ -784,9 +757,9 @@ class Client(BaseClient):
 
             result = self._internal_client.submit_stellar_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
 
-            if result.tx_error and isinstance(result.tx_error.tx_error, BadNonceError):
+            if result.errors and isinstance(result.errors.tx_error, BadNonceError):
                 offset += 1
-                raise result.tx_error.tx_error
+                raise result.errors.tx_error
 
             return result
 
