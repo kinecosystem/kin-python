@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.4.7](https://github.com/kinecosystem/kin-python/releases/tag/0.4.7)
+- Fix invoice list parsing in events webhook handler
+
 ## [0.4.6](https://github.com/kinecosystem/kin-python/releases/tag/0.4.6)
 - Add optional `account_resolution` parameter to `Client.get_balance` 
 

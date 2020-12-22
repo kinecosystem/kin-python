@@ -2,6 +2,7 @@ import base64
 
 import pytest
 from agoraapi.common.v3 import model_pb2
+from google.protobuf.json_format import MessageToDict
 
 from agora import solana
 from agora.error import InvalidSignatureError, BadNonceError
@@ -81,7 +82,7 @@ class TestTransactionEvent:
         data = {
             'kin_version': 3,
             'tx_hash': base64.b64encode(b'txhash'),
-            'invoice_list': il.SerializeToString(),
+            'invoice_list': MessageToDict(il),
             'stellar_event': {
                 'result_xdr': 'resultxdr',
                 'envelope_xdr': 'envelopexdr',
@@ -136,7 +137,7 @@ class TestTransactionEvent:
         data = {
             'kin_version': 4,
             'tx_id': base64.b64encode(b'txsig'),
-            'invoice_list': il.SerializeToString(),
+            'invoice_list': MessageToDict(il),
             'solana_event': {
                 'transaction': base64.b64encode(tx.marshal()).decode('utf-8'),
                 'transaction_error': 'bad_nonce',

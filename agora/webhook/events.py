@@ -1,7 +1,9 @@
 import base64
+import json
 from typing import Optional
 
 from agoraapi.common.v3 import model_pb2
+from google.protobuf.json_format import Parse
 
 from agora import solana
 from agora.error import Error, InvalidSignatureError, BadNonceError, InsufficientBalanceError, AccountNotFoundError
@@ -110,8 +112,7 @@ class TransactionEvent:
 
         il = data.get('invoice_list')
         if il:
-            proto_il = model_pb2.InvoiceList()
-            proto_il.ParseFromString(il)
+            proto_il = Parse(json.dumps(il), model_pb2.InvoiceList())
             invoice_list = InvoiceList.from_proto(proto_il)
         else:
             invoice_list = None
