@@ -22,7 +22,7 @@ from agora.keys import PrivateKey
 from agora.model import TransactionType, AgoraMemo
 from agora.model.transaction import TransactionState
 from agora.retry import NonRetriableErrorsStrategy, LimitStrategy
-from agora.solana import Transaction
+from agora.solana import Transaction, Commitment
 from agora.solana import token
 from agora.solana.memo import memo_instruction
 from agora.solana.system import decompile_create_account
@@ -492,7 +492,7 @@ class TestInternalClientV4:
 
     def test_request_airdrop(self, grpc_channel, executor, no_retry_client):
         public_key = PrivateKey.random().public_key
-        future = executor.submit(no_retry_client.request_airdrop, public_key, 100)
+        future = executor.submit(no_retry_client.request_airdrop, public_key, 100, Commitment.MAX)
 
         tx_sig = b'somesig'
         resp = airdrop_pb_v4.RequestAirdropResponse(result=airdrop_pb_v4.RequestAirdropResponse.Result.OK,
@@ -500,6 +500,7 @@ class TestInternalClientV4:
         req = self._set_request_airdrop_resp(grpc_channel, resp)
         assert req.account_id.value == public_key.raw
         assert req.quarks == 100
+        assert req.commitment == Commitment.MAX
 
         assert future.result() == tx_sig
 

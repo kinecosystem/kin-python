@@ -12,6 +12,7 @@ from agoraapi.common.v3 import model_pb2 as model_pb
 from agoraapi.common.v4 import model_pb2 as model_pb_v4
 from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb
 from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4
+from agoraapi.airdrop.v4 import airdrop_service_pb2 as airdrop_pb_v4
 from kin_base import transaction_envelope as te, memo, operation
 from kin_base.stellarxdr import StellarXDR_const as xdr_const
 
@@ -21,7 +22,7 @@ from agora.client.environment import Environment
 from agora.client.utils import _generate_token_account
 from agora.error import AccountExistsError, AccountNotFoundError, InsufficientBalanceError, \
     DestinationDoesNotExistError, BadNonceError, UnsupportedVersionError, \
-    TransactionRejectedError, Error, AlreadyPaidError
+    TransactionRejectedError, Error, AlreadyPaidError, UnsupportedMethodError
 from agora.keys import PrivateKey
 from agora.model.earn import Earn, EarnBatch
 from agora.model.invoice import InvoiceList, Invoice, LineItem
@@ -29,7 +30,7 @@ from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
 from agora.model.transaction import TransactionState
 from agora.model.transaction_type import TransactionType
-from agora.solana import token, transfer, memo_instruction
+from agora.solana import token, transfer, memo_instruction, Commitment
 from agora.solana.memo import decompile_memo
 from agora.solana.system import decompile_create_account
 from agora.solana.token import decompile_initialize_account, decompile_transfer, decompile_set_authority
@@ -1912,6 +1913,28 @@ class TestAgoraClient:
         assert result.earn_errors[0].earn_index == 1
         assert isinstance(result.earn_errors[0].error, AccountNotFoundError)
 
+    def test_request_airdrop(self, grpc_channel, executor, kin_4_no_app_client):
+        public_key = PrivateKey.random().public_key
+        future = executor.submit(kin_4_no_app_client.request_airdrop, public_key, 100, Commitment.MAX)
+
+        tx_sig = b'somesig'
+        resp = airdrop_pb_v4.RequestAirdropResponse(result=airdrop_pb_v4.RequestAirdropResponse.Result.OK,
+                                                    signature=model_pb_v4.TransactionSignature(value=tx_sig))
+        req = self._set_request_airdrop_resp(grpc_channel, resp)
+        assert req.account_id.value == public_key.raw
+        assert req.quarks == 100
+        assert req.commitment == Commitment.MAX
+
+        assert future.result() == tx_sig
+
+    def test_request_airdrop_unsupported_env(self, grpc_channel, executor):
+        public_key = PrivateKey.random().public_key
+        client = Client(Environment.PRODUCTION, 0)
+        future = executor.submit(client.request_airdrop, public_key, 100, Commitment.MAX)
+
+        with pytest.raises(UnsupportedMethodError):
+            future.result()
+
     @staticmethod
     def _set_v4_create_account_resp(
         channel: grpc_testing.Channel, resp: account_pb_v4.CreateAccountResponse,
@@ -2076,6 +2099,17 @@ class TestAgoraClient:
             result_xdr=result_xdr,
         )
         return TestAgoraClient._set_submit_transaction_resp(channel, resp)
+
+    @staticmethod
+    def _set_request_airdrop_resp(
+        channel: grpc_testing.Channel, resp: airdrop_pb_v4.RequestAirdropResponse,
+        status: grpc.StatusCode = grpc.StatusCode.OK,
+    ) -> airdrop_pb_v4.RequestAirdropRequest:
+        md, request, rpc = channel.take_unary_unary(
+            airdrop_pb_v4.DESCRIPTOR.services_by_name['Airdrop'].methods_by_name['RequestAirdrop']
+        )
+        rpc.terminate(resp, (), status, '')
+        return request
 
     @staticmethod
     def _assert_payment_envelope(

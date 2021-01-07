@@ -26,6 +26,9 @@ class UnsupportedVersionError(Error):
     """Raised when an unsupported version of Kin is used
     """
 
+class UnsupportedMethodError(Error):
+    """Raised when a method is not supported in the current environment.
+    """
 
 class AccountExistsError(Error):
     """Raised when trying to create an account that already exists.

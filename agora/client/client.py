@@ -15,7 +15,7 @@ from agora.error import AccountExistsError, InvoiceError, UnsupportedVersionErro
     SenderDoesNotExistError, InsufficientBalanceError, \
     DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
     TransactionRejectedError, Error, BlockchainVersionError, AccountNotFoundError, NoSubsidizerError, \
-    AlreadySubmittedError, invoice_error_from_proto
+    AlreadySubmittedError, invoice_error_from_proto, UnsupportedMethodError
 from agora.keys import PrivateKey, PublicKey, ED25519_PUB_KEY_SIZE
 from agora.model.earn import Earn, EarnBatch
 from agora.model.invoice import InvoiceList
@@ -208,6 +208,22 @@ class BaseClient:
         """
         raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement submit_earn_batch')
 
+    def request_airdrop(
+        self, public_key: PublicKey, quarks: int, commitment: Optional[Commitment] = None,
+    ) -> bytes:
+        """Requests an airdrop of Kin to a Kin account. Only available on Kin 4 on the test environment.
+
+        :param public_key: the public key of the Kin token account to airdrop to. To get all the token accounts owned by
+            an owner, use Client.resolve_token_accounts.
+        :param quarks: The amount, in quarks, to request.
+        :param commitment: (optional) The commitment to use.
+
+        :raise: :exc:`UnsupportedMethodError <agora.error.UnsupportedMethodError>`
+
+        :return: The transaction ID of the airdrop transaction submitted by Agora.
+        """
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement request_airdrop')
+
     def close(self) -> None:
         """Closes the connection-related resources (e.g. the gRPC channel) used by the client. Subsequent requests to
         this client will cause an exception to be thrown.
@@ -272,6 +288,7 @@ class Client(BaseClient):
         ]
 
         self._kin_version = kin_version
+        self._env = env
         if kin_version == 2:
             self._asset_issuer = _KIN_2_ISSUERS[env]
         else:
@@ -444,6 +461,15 @@ class Client(BaseClient):
                 result.earn_errors.append(EarnError(invoice_error.op_index, invoice_error_from_proto(invoice_error)))
 
         return result
+
+    def request_airdrop(
+        self, public_key: PublicKey, quarks: int, commitment: Optional[Commitment] = None,
+    ) -> bytes:
+        if self._env != Environment.TEST:
+            raise UnsupportedMethodError()
+
+        commitment = commitment if commitment else self._default_commitment
+        return self._internal_client.request_airdrop(public_key, quarks, commitment)
 
     def close(self) -> None:
         self._grpc_channel.close()

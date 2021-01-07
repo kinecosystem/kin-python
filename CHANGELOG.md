@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.6.0](https://github.com/kinecosystem/kin-python/releases/tag/0.6.0)
+- Expose `request_airdrop` on `Client` for Kin 4
+
 ## [0.5.0](https://github.com/kinecosystem/kin-python/releases/tag/0.5.0)
 - Add `dedupe_id` support on payments (`Client.submit_payment`) and earn batches (`Client.submit_earn_batch`)
 - `Client.submit_earn_batch` now supports submitting only a single transaction and up to 15 earns
