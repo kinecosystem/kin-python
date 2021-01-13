@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## [0.6.1](https://github.com/kinecosystem/kin-python/releases/tag/0.6.1)
+- Bump agora-api and grpcio version
+
 ## [0.6.0](https://github.com/kinecosystem/kin-python/releases/tag/0.6.0)
 - Expose `request_airdrop` on `Client` for Kin 4
 
