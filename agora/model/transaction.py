@@ -109,7 +109,7 @@ class TransactionData:
             elif isinstance(tx.memo, stellar_memo.TextMemo):
                 memo = tx.memo.text.decode()
 
-            tx_errors = TransactionErrors.from_solana_tx(env, item.transaction_error)
+            tx_errors = TransactionErrors.from_stellar_tx(env, item.transaction_error)
 
         for idx, p in enumerate(item.payments):
             inv = il.invoices[idx] if il and il.invoices else None

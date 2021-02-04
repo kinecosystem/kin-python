@@ -2,6 +2,7 @@ import logging
 import os
 from typing import List
 
+import base58
 from flask import Flask, request
 
 from agora.client import Environment
@@ -82,12 +83,12 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
                     logging.warning('rejecting: invoice missing sku')
                     resp.mark_invoice_error(idx, InvoiceErrorReason.SKU_NOT_FOUND)
 
-    tx_hash_str = req.get_tx_hash().hex()
+    tx_id = base58.b58encode(req.get_tx_id())
     if resp.rejected:
-        logging.warning(f'transaction rejected: {tx_hash_str} ({len(req.payments)} payments)')
+        logging.warning(f'transaction rejected: {tx_id} ({len(req.payments)} payments)')
         return
 
-    logging.debug(f'transaction approved: {tx_hash_str} ({len(req.payments)} payments)')
+    logging.debug(f'transaction approved: {tx_id} ({len(req.payments)} payments)')
 
     # Note: This allows Agora to forward the transaction to the blockchain. However, it does not indicate that it will
     # be submitted successfully, or that the transaction will be successful. For example, the sender may have
@@ -96,12 +97,9 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
     # Backends may keep track of the transaction themselves using SignTransactionRequest.get_tx_hash() and rely on
     # either the Events webhook or polling to get the transaction status.
     #
-    # Note: `sign` should only be called for Kin 3 transactions that an app wants to sign with their whitelisted
-    # account.
-    #
-    # Calling `sign` on a Kin 4 transaction is a no-op.
-    if req.kin_version == 3:
-        resp.sign(webhook_private_key)
+    # Note: Calling `sign` on a Kin 4 transaction is currently a no-op, but sign functionality for Solana transactions
+    # will be added at a later date.
+    resp.sign(webhook_private_key)
     return
 
 

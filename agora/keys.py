@@ -25,7 +25,7 @@ class PublicKey:
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'public_key={bytes(self._verify_key)})'
+               f'public_key={self.to_base58()})'
 
     @classmethod
     def from_base58(cls, address: str) -> 'PublicKey':
@@ -99,7 +99,7 @@ class PrivateKey:
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'private_key={bytes(self._signing_key)})'
+               f'private_key={self.to_base58()})'
 
     @classmethod
     def random(cls):

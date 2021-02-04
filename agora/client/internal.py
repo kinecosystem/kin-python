@@ -1,26 +1,21 @@
-import base64
 from typing import List, Optional
 
 import grpc
-from agoraapi.account.v3 import account_service_pb2 as account_pb_v3, account_service_pb2_grpc as account_pb_grpc_v3
-from agoraapi.account.v4 import account_service_pb2 as account_pb_v4, account_service_pb2_grpc as account_pb_grpc_v4
-from agoraapi.airdrop.v4 import airdrop_service_pb2 as airdrop_pb_v4, airdrop_service_pb2_grpc as airdrop_pb_grpc_v4
+from agoraapi.account.v4 import account_service_pb2 as account_pb, account_service_pb2_grpc as account_pb_grpc
+from agoraapi.airdrop.v4 import airdrop_service_pb2 as airdrop_pb, airdrop_service_pb2_grpc as airdrop_pb_grpc
 from agoraapi.common.v3 import model_pb2 as model_pb_v3
-from agoraapi.common.v4 import model_pb2 as model_pb_v4
-from agoraapi.transaction.v3 import transaction_service_pb2 as tx_pb_v3, transaction_service_pb2_grpc as tx_pb_grpc_v3
-from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb_v4, transaction_service_pb2_grpc as tx_pb_grpc_v4
-from kin_base import transaction_envelope as te
+from agoraapi.common.v4 import model_pb2 as model_pb
+from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb, transaction_service_pb2_grpc as tx_pb_grpc
 
 from agora import solana
 from agora.cache.cache import LRUCache
-from agora.client.utils import _generate_token_account
-from agora.error import BlockchainVersionError, AccountExistsError, AccountNotFoundError, TransactionRejectedError, \
-    TransactionErrors, Error, InsufficientBalanceError, PayerRequiredError, NoSubsidizerError, AlreadySubmittedError, \
+from agora.error import AccountExistsError, AccountNotFoundError, TransactionRejectedError, \
+    TransactionErrors, Error, InsufficientBalanceError, PayerRequiredError, AlreadySubmittedError, \
     BadNonceError
-from agora.keys import PrivateKey, PublicKey
-from agora.model import AccountInfo, TransactionData, TransactionState, InvoiceList, ReadOnlyPayment
+from agora.keys import PublicKey
+from agora.model import AccountInfo, TransactionData, TransactionState, InvoiceList
 from agora.retry import Strategy, retry
-from agora.solana import Transaction, token, system
+from agora.solana import token
 from agora.solana.commitment import Commitment
 from agora.utils import user_agent
 from agora.version import VERSION
@@ -45,49 +40,21 @@ class InternalClient:
         """
 
     def __init__(
-        self, grpc_channel: grpc.Channel, retry_strategies: List[Strategy], kin_version: int,
-        desired_kin_version: Optional[int] = None,
+        self, grpc_channel: grpc.Channel, retry_strategies: List[Strategy],
     ):
-        self._account_stub_v3 = account_pb_grpc_v3.AccountStub(grpc_channel)
-        self._transaction_stub_v3 = tx_pb_grpc_v3.TransactionStub(grpc_channel)
-
-        self._account_stub_v4 = account_pb_grpc_v4.AccountStub(grpc_channel)
-        self._transaction_stub_v4 = tx_pb_grpc_v4.TransactionStub(grpc_channel)
-        self._airdrop_stub_v4 = airdrop_pb_grpc_v4.AirdropStub(grpc_channel)
+        self._account_stub_v4 = account_pb_grpc.AccountStub(grpc_channel)
+        self._transaction_stub_v4 = tx_pb_grpc.TransactionStub(grpc_channel)
+        self._airdrop_stub_v4 = airdrop_pb_grpc.AirdropStub(grpc_channel)
 
         self._retry_strategies = retry_strategies
-        self._kin_version = kin_version
-        self._desired_kin_version = desired_kin_version
 
-        if self._desired_kin_version:
-            self._metadata = (
-                user_agent(VERSION),
-                ('kin-version', str(self._kin_version)),
-                ('desired-kin-version', str(self._desired_kin_version)),
-            )
-        else:
-            self._metadata = (
-                user_agent(VERSION),
-                ('kin-version', str(self._kin_version)),
-            )
+        self._metadata = (
+            user_agent(VERSION),
+            ('kin-version', "4"),
+        )
 
         # Currently only service config is cached, so limit to 1 entry
         self._response_cache = LRUCache(300, 1)
-
-    def set_kin_version(self, kin_version: int):
-        self._kin_version = kin_version
-
-        if self._desired_kin_version:
-            self._metadata = (
-                user_agent(VERSION),
-                ('kin-version', str(self._kin_version)),
-                ('desired-kin-version', str(self._desired_kin_version)),
-            )
-        else:
-            self._metadata = (
-                user_agent(VERSION),
-                ('kin-version', str(self._kin_version)),
-            )
 
     def get_blockchain_version(self) -> int:
         """Get the blockchain version to use.
@@ -97,198 +64,35 @@ class InternalClient:
 
         def _get_blockchain_version():
             return self._transaction_stub_v4.GetMinimumKinVersion(
-                tx_pb_v4.GetMinimumKinVersionRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
+                tx_pb.GetMinimumKinVersionRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
         resp = retry(self._retry_strategies, _get_blockchain_version)
         return resp.version
 
-    def create_stellar_account(self, private_key: PrivateKey):
-        """Submit a request to Agora to create a Stellar account.
-
-        :param private_key: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to create
-        """
-
-        def _create():
-            try:
-                resp = self._account_stub_v3.CreateAccount(account_pb_v3.CreateAccountRequest(
-                    account_id=model_pb_v3.StellarAccountId(
-                        value=private_key.public_key.stellar_address
-                    ),
-                ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-            except grpc.RpcError as e:
-                raise BlockchainVersionError() if self._is_migration_error(e) else e
-
-            if resp.result == account_pb_v3.CreateAccountResponse.Result.EXISTS:
-                raise AccountExistsError()
-
-        retry(self._retry_strategies, _create)
-
-    def get_stellar_account_info(self, public_key: PublicKey) -> AccountInfo:
-        """Get the info of a Stellar account from Agora.
-
-        :param public_key: The :class:`PublicKey <agora.keys.PublicKey>` of the account to request the info for.
-        :return: A :class:`AccountInfo <agora.model.account.AccountInfo>` object.
-        """
-
-        def _get_account():
-            try:
-                resp = self._account_stub_v3.GetAccountInfo(account_pb_v3.GetAccountInfoRequest(
-                    account_id=model_pb_v3.StellarAccountId(
-                        value=public_key.stellar_address
-                    ),
-                ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-            except grpc.RpcError as e:
-                raise BlockchainVersionError() if self._is_migration_error(e) else e
-
-            if resp.result == account_pb_v3.GetAccountInfoResponse.Result.NOT_FOUND:
-                raise AccountNotFoundError
-
-            return resp
-
-        resp = retry(self._retry_strategies, _get_account)
-        return AccountInfo.from_proto(resp.account_info)
-
-    def get_stellar_transaction(self, tx_hash: bytes) -> TransactionData:
-        """Get a Stellar transaction from Agora.
-
-        :param tx_hash: The hash of the transaction
-        :return: A :class:`TransactionData <agora.model.transaction.TransactionData>` object.
-        """
-
-        def _get_transaction():
-            return self._transaction_stub_v3.GetTransaction(tx_pb_v3.GetTransactionRequest(
-                transaction_hash=model_pb_v3.TransactionHash(
-                    value=tx_hash
-                )
-            ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-
-        resp = retry(self._retry_strategies, _get_transaction)
-
-        if resp.state is tx_pb_v3.GetTransactionResponse.State.UNKNOWN:
-            return TransactionData(tx_hash, TransactionState.UNKNOWN)
-
-        if resp.state == tx_pb_v3.GetTransactionResponse.State.SUCCESS:
-            data = TransactionData(tx_hash, TransactionState.SUCCESS)
-            env = te.TransactionEnvelope.from_xdr(base64.b64encode(resp.item.envelope_xdr))
-            data.payments = ReadOnlyPayment.payments_from_envelope(env, resp.item.invoice_list,
-                                                                   kin_version=self._kin_version)
-            return data
-
-        raise Error(f'Unexpected transaction state from Agora: {resp.state}')
-
-    def submit_stellar_transaction(
-        self, tx_bytes: bytes, invoice_list: Optional[InvoiceList] = None
-    ) -> SubmitTransactionResult:
-        """Submit a Stellar transaction to Agora.
-
-        :param tx_bytes: The transaction envelope xdr, in bytes.
-        :param invoice_list: (optional) An :class:`InvoiceList <agora.model.invoice.InvoiceList>` to associate with the
-            transaction
-        :return: A :class:`SubmitTransactionResult <agora.client.internal.SubmitTransactionResult>` object.
-        """
-
-        def _submit():
-            req = tx_pb_v3.SubmitTransactionRequest(
-                envelope_xdr=tx_bytes,
-                invoice_list=invoice_list.to_proto() if invoice_list else None,
-            )
-            try:
-                resp = self._transaction_stub_v3.SubmitTransaction(req, metadata=self._metadata,
-                                                                   timeout=_GRPC_TIMEOUT_SECONDS)
-            except grpc.RpcError as e:
-                raise BlockchainVersionError() if self._is_migration_error(e) else e
-
-            result = SubmitTransactionResult(tx_id=resp.hash.value)
-            if resp.result == tx_pb_v3.SubmitTransactionResponse.Result.REJECTED:
-                raise TransactionRejectedError()
-            elif resp.result == tx_pb_v3.SubmitTransactionResponse.Result.INVOICE_ERROR:
-                result.invoice_errors = resp.invoice_errors
-            elif resp.result == tx_pb_v3.SubmitTransactionResponse.Result.FAILED:
-                result.errors = TransactionErrors.from_result(resp.result_xdr)
-            elif resp.result != tx_pb_v3.SubmitTransactionResponse.Result.OK:
-                raise Error(f'unexpected result from agora: {resp.result}')
-
-            return result
-
-        return retry(self._retry_strategies, _submit)
-
-    def create_solana_account(self, private_key: PrivateKey, commitment: Optional[Commitment] = Commitment.SINGLE,
-                              subsidizer: Optional[PrivateKey] = None):
+    def create_solana_account(self, tx: solana.Transaction, commitment: Optional[Commitment] = Commitment.SINGLE):
         """Submit a request to Agora to create a Solana account.
 
-        :param private_key: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to create
+        :param tx: The Solana transaction to create an account.
         :param commitment: The :class:`Commitment <agora.solana.commitment.Commitment>` to use.
-        :param subsidizer: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to use as the
-            transaction payer.
         """
 
-        token_account_key = _generate_token_account(private_key)
-
-        def _create():
-            nonlocal subsidizer
-
-            service_config_resp = self.get_service_config()
-            if not service_config_resp.subsidizer_account.value and not subsidizer:
-                raise NoSubsidizerError()
-
-            subsidizer_id = (subsidizer.public_key if subsidizer else
-                             PublicKey(service_config_resp.subsidizer_account.value))
-
-            recent_blockhash_future = self._transaction_stub_v4.GetRecentBlockhash.future(
-                tx_pb_v4.GetRecentBlockhashRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-            min_balance_future = self._transaction_stub_v4.GetMinimumBalanceForRentExemption.future(
-                tx_pb_v4.GetMinimumBalanceForRentExemptionRequest(size=token.ACCOUNT_SIZE), metadata=self._metadata,
-                timeout=_GRPC_TIMEOUT_SECONDS)
-            recent_blockhash_resp = recent_blockhash_future.result()
-            min_balance_resp = min_balance_future.result()
-
-            token_program = PublicKey(service_config_resp.token_program.value)
-            transaction = Transaction.new(
-                subsidizer_id,
-                [
-                    system.create_account(
-                        subsidizer_id,
-                        token_account_key.public_key,
-                        token_program,
-                        min_balance_resp.lamports,
-                        token.ACCOUNT_SIZE,
-                    ),
-                    token.initialize_account(
-                        token_account_key.public_key,
-                        PublicKey(service_config_resp.token.value),
-                        private_key.public_key,
-                        token_program,
-                    ),
-                    token.set_authority(
-                        token_account_key.public_key,
-                        private_key.public_key,
-                        token.AuthorityType.CloseAccount,
-                        token_program,
-                        new_authority=subsidizer_id,
-                    )
-                ]
-            )
-            transaction.set_blockhash(recent_blockhash_resp.blockhash.value)
-            transaction.sign([private_key, token_account_key])
-            if subsidizer:
-                transaction.sign([subsidizer])
-
-            req = account_pb_v4.CreateAccountRequest(
-                transaction=model_pb_v4.Transaction(value=transaction.marshal()),
+        def _submit_request():
+            req = account_pb.CreateAccountRequest(
+                transaction=model_pb.Transaction(value=tx.marshal()),
                 commitment=commitment.to_proto(),
             )
             resp = self._account_stub_v4.CreateAccount(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
-            if resp.result == account_pb_v4.CreateAccountResponse.Result.EXISTS:
+            if resp.result == account_pb.CreateAccountResponse.Result.EXISTS:
                 raise AccountExistsError()
-            if resp.result == account_pb_v4.CreateAccountResponse.Result.PAYER_REQUIRED:
+            if resp.result == account_pb.CreateAccountResponse.Result.PAYER_REQUIRED:
                 raise PayerRequiredError()
-            if resp.result == account_pb_v4.CreateAccountResponse.Result.BAD_NONCE:
+            if resp.result == account_pb.CreateAccountResponse.Result.BAD_NONCE:
                 raise BadNonceError()
-            if resp.result != account_pb_v4.CreateAccountResponse.Result.OK:
+            if resp.result != account_pb.CreateAccountResponse.Result.OK:
                 raise Error(f'unexpected result from agora: {resp.result}')
 
-        retry(self._retry_strategies, _create)
+        retry(self._retry_strategies, _submit_request)
 
     def get_solana_account_info(
         self, public_key: PublicKey, commitment: Optional[Commitment] = Commitment.SINGLE
@@ -300,19 +104,19 @@ class InternalClient:
         :return: A :class:`AccountInfo <agora.model.account.AccountInfo>` object.
         """
 
-        def _get():
-            resp = self._account_stub_v4.GetAccountInfo(account_pb_v4.GetAccountInfoRequest(
-                account_id=model_pb_v4.SolanaAccountId(
+        def _submit_request():
+            resp = self._account_stub_v4.GetAccountInfo(account_pb.GetAccountInfoRequest(
+                account_id=model_pb.SolanaAccountId(
                     value=public_key.raw
                 ),
                 commitment=commitment.to_proto(),
             ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-            if resp.result == account_pb_v4.GetAccountInfoResponse.Result.NOT_FOUND:
+            if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
                 raise AccountNotFoundError
 
             return AccountInfo.from_proto_v4(resp.account_info)
 
-        return retry(self._retry_strategies, _get)
+        return retry(self._retry_strategies, _submit_request)
 
     def get_transaction(
         self, tx_id: bytes, commitment: Optional[Commitment] = Commitment.SINGLE
@@ -325,14 +129,14 @@ class InternalClient:
         :return: A :class:`TransactionData <agora.model.transaction.TransactionData>` object.
         """
 
-        def _get_transaction():
-            req = tx_pb_v4.GetTransactionRequest(
-                transaction_id=model_pb_v4.TransactionId(value=tx_id),
+        def _submit_request():
+            req = tx_pb.GetTransactionRequest(
+                transaction_id=model_pb.TransactionId(value=tx_id),
                 commitment=commitment.to_proto(),
             )
             return self._transaction_stub_v4.GetTransaction(req, metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
-        resp = retry(self._retry_strategies, _get_transaction)
+        resp = retry(self._retry_strategies, _submit_request)
 
         if resp.item.transaction_id.value:
             return TransactionData.from_proto(resp.item, resp.state)
@@ -356,12 +160,12 @@ class InternalClient:
         attempt = 0
         tx_bytes = tx.marshal()
 
-        def _submit():
+        def _submit_request():
             nonlocal attempt
 
             attempt += 1
-            req = tx_pb_v4.SubmitTransactionRequest(
-                transaction=model_pb_v4.Transaction(
+            req = tx_pb.SubmitTransactionRequest(
+                transaction=model_pb.Transaction(
                     value=tx_bytes,
                 ),
                 invoice_list=invoice_list.to_proto() if invoice_list else None,
@@ -371,69 +175,78 @@ class InternalClient:
             resp = self._transaction_stub_v4.SubmitTransaction(req, metadata=self._metadata,
                                                                timeout=_GRPC_TIMEOUT_SECONDS)
 
-            if resp.result == tx_pb_v4.SubmitTransactionResponse.Result.REJECTED:
+            if resp.result == tx_pb.SubmitTransactionResponse.Result.REJECTED:
                 raise TransactionRejectedError()
-            if resp.result == tx_pb_v4.SubmitTransactionResponse.Result.PAYER_REQUIRED:
+            if resp.result == tx_pb.SubmitTransactionResponse.Result.PAYER_REQUIRED:
                 raise PayerRequiredError()
 
             result = SubmitTransactionResult(tx_id=resp.signature.value)
-            if resp.result == tx_pb_v4.SubmitTransactionResponse.Result.ALREADY_SUBMITTED:
+            if resp.result == tx_pb.SubmitTransactionResponse.Result.ALREADY_SUBMITTED:
                 # If this occurs on the first attempt, it's likely due to the submission of two identical transactions
                 # in quick succession and we should raise the error to the caller. Otherwise, it's likely that the
                 # transaction completed successfully on a previous attempt that failed due to a transient error.
                 if attempt == 1:
                     raise AlreadySubmittedError()
-            elif resp.result == tx_pb_v4.SubmitTransactionResponse.Result.FAILED:
+            elif resp.result == tx_pb.SubmitTransactionResponse.Result.FAILED:
                 result.errors = TransactionErrors.from_solana_tx(tx, resp.transaction_error)
-            elif resp.result == tx_pb_v4.SubmitTransactionResponse.Result.INVOICE_ERROR:
+            elif resp.result == tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR:
                 result.invoice_errors = resp.invoice_errors
-            elif resp.result != tx_pb_v4.SubmitTransactionResponse.Result.OK:
+            elif resp.result != tx_pb.SubmitTransactionResponse.Result.OK:
                 raise Error(f'unexpected result from agora: {resp.result}')
 
             return result
 
-        return retry(self._retry_strategies, _submit)
+        return retry(self._retry_strategies, _submit_request)
 
-    def get_service_config(self) -> tx_pb_v4.GetServiceConfigResponse:
+    def get_service_config(self) -> tx_pb.GetServiceConfigResponse:
+        def _submit_request():
+            return self._transaction_stub_v4.GetServiceConfig(
+                tx_pb.GetServiceConfigRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
+
         resp_bytes = self._response_cache.get(_SERVICE_CONFIG_CACHE_KEY)
         if resp_bytes:
-            resp = tx_pb_v4.GetServiceConfigResponse()
+            resp = tx_pb.GetServiceConfigResponse()
             resp.ParseFromString(resp_bytes)
             return resp
 
-        def _get_config():
-            return self._transaction_stub_v4.GetServiceConfig(
-                tx_pb_v4.GetServiceConfigRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
-
-        resp = retry(self._retry_strategies, _get_config)
+        resp = retry(self._retry_strategies, _submit_request)
         self._response_cache.set(_SERVICE_CONFIG_CACHE_KEY, resp.SerializeToString(), 1800)  # cache for 30 min
         return resp
 
-    def get_recent_blockhash(self) -> tx_pb_v4.GetRecentBlockhashResponse:
-        def _get_recent_blockhash():
+    def get_recent_blockhash(self) -> tx_pb.GetRecentBlockhashResponse:
+        def _submit_request():
             return self._transaction_stub_v4.GetRecentBlockhash(
-                tx_pb_v4.GetRecentBlockhashRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
+                tx_pb.GetRecentBlockhashRequest(), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
 
-        return retry(self._retry_strategies, _get_recent_blockhash)
+        return retry(self._retry_strategies, _submit_request)
+
+    def get_minimum_balance_for_rent_exception(self) -> tx_pb.GetMinimumBalanceForRentExemptionResponse:
+        def _submit_request():
+            return self._transaction_stub_v4.GetMinimumBalanceForRentExemption(
+                tx_pb.GetMinimumBalanceForRentExemptionRequest(size=token.ACCOUNT_SIZE), metadata=self._metadata,
+                timeout=_GRPC_TIMEOUT_SECONDS
+            )
+
+        return retry(self._retry_strategies, _submit_request)
 
     def request_airdrop(
         self, public_key: PublicKey, quarks: int, commitment: Optional[Commitment] = Commitment.SINGLE
     ) -> bytes:
         def _request_airdrop():
             resp = self._airdrop_stub_v4.RequestAirdrop(
-                airdrop_pb_v4.RequestAirdropRequest(
-                    account_id=model_pb_v4.SolanaAccountId(
+                airdrop_pb.RequestAirdropRequest(
+                    account_id=model_pb.SolanaAccountId(
                         value=public_key.raw
                     ),
                     quarks=quarks,
                     commitment=commitment.to_proto(),
                 ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS
             )
-            if resp.result == airdrop_pb_v4.RequestAirdropResponse.Result.OK:
+            if resp.result == airdrop_pb.RequestAirdropResponse.Result.OK:
                 return resp.signature.value
-            if resp.result == airdrop_pb_v4.RequestAirdropResponse.Result.NOT_FOUND:
+            if resp.result == airdrop_pb.RequestAirdropResponse.Result.NOT_FOUND:
                 raise AccountNotFoundError()
-            if resp.result == airdrop_pb_v4.RequestAirdropResponse.INSUFFICIENT_KIN:
+            if resp.result == airdrop_pb.RequestAirdropResponse.INSUFFICIENT_KIN:
                 raise InsufficientBalanceError()
 
             raise Error(f'unexpected response from airdrop service: {resp.result}')
@@ -442,15 +255,9 @@ class InternalClient:
 
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
         def _resolve():
-            return self._account_stub_v4.ResolveTokenAccounts(account_pb_v4.ResolveTokenAccountsRequest(
-                account_id=model_pb_v4.SolanaAccountId(value=public_key.raw)
+            return self._account_stub_v4.ResolveTokenAccounts(account_pb.ResolveTokenAccountsRequest(
+                account_id=model_pb.SolanaAccountId(value=public_key.raw)
             ))
 
         resp = retry(self._retry_strategies, _resolve)
         return [PublicKey(token_account.value) for token_account in resp.token_accounts]
-
-    def _is_migration_error(self, e: grpc.RpcError) -> bool:
-        if e.code() == grpc.StatusCode.FAILED_PRECONDITION and self.get_blockchain_version() > self._kin_version:
-            return True
-
-        return False

@@ -36,8 +36,6 @@ class EarnBatch:
 
     :param sender: The :class:`PrivateKey <agora.keys.PrivateKey>` of the sender
     :param earns: A list of :class:`Earn <agora.model.earn.Earn>` objects.
-    :param channel: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of a channel account to use as
-        the transaction source. If not set, the `sender` will be used as the source.
     :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
         will be applied.
     :param subsidizer: (optional) The subsidizer to use for the create account transaction. The subsidizer will be
@@ -46,12 +44,11 @@ class EarnBatch:
     """
 
     def __init__(
-        self, sender: PrivateKey, earns: List[Earn], channel: Optional[PrivateKey] = None, memo: Optional[str] = None,
+        self, sender: PrivateKey, earns: List[Earn], memo: Optional[str] = None,
         subsidizer: Optional[PrivateKey] = None, dedupe_id: Optional[bytes] = None
     ):
         self.sender = sender
         self.earns = earns
-        self.channel = channel
         self.memo = memo
         self.subsidizer = subsidizer
         self.dedupe_id = dedupe_id
@@ -62,11 +59,10 @@ class EarnBatch:
 
         return (self.sender == other.sender and
                 self.earns == other.earns and
-                self.channel == other.channel and
                 self.memo == other.memo and
                 self.subsidizer == other.subsidizer)
 
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
-               f'sender={self.sender!r}, earns={[e for e in self.earns]!r}, channel={self.channel!r}, ' \
-               f'memo={self.memo!r}, subsidizer={self.subsidizer!r}), dedupe_id={self.dedupe_id}'
+               f'sender={self.sender!r}, earns={[e for e in self.earns]!r}, memo={self.memo!r}, ' \
+               f'subsidizer={self.subsidizer!r}), dedupe_id={self.dedupe_id}'

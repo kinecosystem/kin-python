@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- Remove Stellar (Kin 2 & Kin 3) support
+    - Only Kin 4 and v4 Agora APIs are supported
+    - `Client.__init__` no longer accepts `kin_version`, `whitelist_key` and `desired_kin_version`
+    - `AccountInfo` no longer has `sequence_number`
+    - Removed `channel` from `Payment` and `EarnBatch`
+    - Removed `envelope`, `kin_version` and `get_tx_hash()` from `SignTransactionRequest`
+    - Removed `envelope` from `SignTransactionResponse`
+    - Removed `kin_version` and `stellar_event` from `TransactionEvent`
 
 ## [0.6.1](https://github.com/kinecosystem/kin-python/releases/tag/0.6.1)
 - Bump agora-api and grpcio version

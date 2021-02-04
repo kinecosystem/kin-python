@@ -1,16 +1,12 @@
 import base64
 from typing import List, Optional
 
-import kin_base
 from agoraapi.common.v3 import model_pb2
-from kin_base import transaction_envelope as te
 
-from agora import KIN_2_PROD_NETWORK, KIN_2_TEST_NETWORK, solana
-from agora.client import Environment
+from agora import solana
 from agora.error import InvoiceErrorReason, OperationInvoiceError
 from agora.keys import PrivateKey
 from agora.model import InvoiceList, ReadOnlyPayment
-from agora.utils import envelope_from_xdr
 
 
 class SignTransactionRequest:
@@ -18,33 +14,17 @@ class SignTransactionRequest:
 
     :param payments: A list of :class:`ReadOnlyPayment <agora.model.payment.ReadOnlyPayment>` that an app client is
         requesting the server to sign.
-    :param kin_version: The version of Kin this transaction is using.
-    :param envelope: (optional) The :class:`TransactionEnvelope <kin_base.transaction_envelope.TransactionEnvelope>`
-        object. Only set on Stellar transactions.
-
-        Note: for Kin 2 transactions, Kin amounts inside the envelope will appear to be 100x larger than they are in
-        reality. This is due to the fact that the `kin_base` module (which is used to parse the Stellar envelope XDR
-        string) assumes a smallest denomination of 1e-5, but Kin 2 has a smallest denomination of 1e-7. An accurate
-        representation of the amounts can be found inside `payments`.
-    :param transaction: (optional) The :class:`Transaction <agora.solana.transaction.Transaction>` object. Only set on
-        Solana transactions.
+    :param transaction: The :class:`Transaction <agora.solana.transaction.Transaction>` object.
     """
 
     def __init__(
-        self, payments: List[ReadOnlyPayment], kin_version: int, envelope: Optional[te.TransactionEnvelope] = None,
-        transaction: [solana.Transaction] = None,
+        self, payments: List[ReadOnlyPayment], transaction: [solana.Transaction],
     ):
         self.payments = payments
-        self.kin_version = kin_version
-        self.envelope = envelope
         self.transaction = transaction
 
     @classmethod
-    def from_json(cls, data: dict, environment: Environment):
-        kin_version = data.get('kin_version')
-        if not kin_version:
-            kin_version = 3
-
+    def from_json(cls, data: dict):
         il_str = data.get('invoice_list')
         if il_str:
             proto_il = model_pb2.InvoiceList()
@@ -53,38 +33,12 @@ class SignTransactionRequest:
         else:
             il = None
 
-        if kin_version == 4:
-            tx_string = data.get('solana_transaction', "")
-            if not tx_string:
-                raise ValueError('`solana_transaction` is required on Kin 4 transactions')
+        tx_string = data.get('solana_transaction', "")
+        if not tx_string:
+            raise ValueError('`solana_transaction` is required on Kin 4 transactions')
 
-            tx = solana.Transaction.unmarshal(base64.b64decode(tx_string))
-            return cls(ReadOnlyPayment.payments_from_transaction(tx, il), kin_version, transaction=tx)
-        else:
-            # Kin 2 or Kin 3 transaction
-            envelope_xdr = data.get('envelope_xdr', "")
-            if len(envelope_xdr) == 0:
-                raise ValueError('envelope_xdr is required')
-
-            if kin_version == 2:
-                network_id = KIN_2_PROD_NETWORK if environment == Environment.PRODUCTION else KIN_2_TEST_NETWORK
-                env = envelope_from_xdr(network_id, envelope_xdr)
-            else:
-                network_id = 'PUBLIC' if environment == Environment.PRODUCTION else 'TESTNET'
-                env = envelope_from_xdr(network_id, envelope_xdr)
-
-            return cls(ReadOnlyPayment.payments_from_envelope(env, il, kin_version=kin_version), kin_version,
-                       envelope=env)
-
-    def get_tx_hash(self) -> Optional[bytes]:
-        """Returns the transaction hash of the transaction being signed, if it is a Stellar transaction.
-
-        This method has been deprecated. New code should use :method:`SignTransactionRequest.get_tx_id`
-        instead.
-
-        :return: The transaction hash, in bytes, or None if no transaction envelope is available.
-        """
-        return self.envelope.hash_meta() if self.envelope else None
+        tx = solana.Transaction.unmarshal(base64.b64decode(tx_string))
+        return cls(ReadOnlyPayment.payments_from_transaction(tx, il), tx)
 
     def get_tx_id(self) -> Optional[bytes]:
         """Returns the transaction id of the transaction in the sign transaction request, if available. The id is
@@ -92,21 +46,14 @@ class SignTransactionRequest:
 
         :return: The transaction id, in bytes, or None if the transaction id is not available.
         """
-        if self.transaction:
-            return self.transaction.get_signature()
-        if self.envelope:
-            return self.envelope.hash_meta()
+        return self.transaction.get_signature()
 
 
 class SignTransactionResponse:
-    """A response to a sign transaction request received from Agora. 
-    
-    :param envelope: (optional) The :class:`TransactionEnvelope <kin_base.transaction_envelope.TransactionEnvelope>`
-        object. Only set on Stellar transactions.
+    """A response to a sign transaction request received from Agora.
     """
 
-    def __init__(self, envelope: Optional[te.TransactionEnvelope] = None):
-        self.envelope = envelope
+    def __init__(self):
         self.invoice_errors = []
         self.rejected = False
 
@@ -115,9 +62,8 @@ class SignTransactionResponse:
 
         :param private_key: The account :class:`PrivateKey <agora.keys.PrivateKey>`
         """
-        if self.envelope:
-            kp = kin_base.Keypair.from_raw_seed(private_key.raw)
-            self.envelope.sign(kp)
+        # TODO: add solana transaction signing for subsidization
+        pass
 
     def reject(self):
         """Marks that the sign transaction request is rejected.
@@ -142,7 +88,4 @@ class SignTransactionResponse:
             return resp
 
         resp = {}
-        if self.envelope:
-            resp['envelope_xdr'] = self.envelope.xdr().decode()
-
         return resp

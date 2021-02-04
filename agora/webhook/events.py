@@ -54,61 +54,28 @@ class SolanaEvent:
         return Error(f'error: {e}')
 
 
-class StellarEvent:
-    """Stellar event data related to a transaction.
-
-    :param result_xdr: A base64-encoded transaction result XDR.
-    :param envelope_xdr: A base64-encoded transaction envelope XDR.
-    """
-
-    def __init__(self, result_xdr: str, envelope_xdr: str):
-        self.result_xdr = result_xdr
-        self.envelope_xdr = envelope_xdr
-
-    @classmethod
-    def from_json(cls, data: dict) -> 'StellarEvent':
-        return cls(
-            result_xdr=data.get('result_xdr'),
-            envelope_xdr=data.get('envelope_xdr'),
-        )
-
-
 class TransactionEvent:
     """An event indicating a transaction has completed (either successfully or
     unsuccessfully).
 
-    :param kin_version: the version of Kin the transaction was submitted to
     :param tx_id: the id of the transaction. Either a 32-byte Stellar transaction hash or a 64-byte Solana transaction
         signature.
+    :param solana_event: any Solana data related to the transaction.
     :param invoice_list: (optional) the InvoiceList related to the transaction.
-    :param stellar_event: (optional) any Stellar data related to the transaction. Set on Kin 2 and Kin 3 transaction
-        events.
-    :param solana_event: (optional) any Solana data related to the transaction. Set on Kin 4 transaction events.
     """
 
     def __init__(
-        self, kin_version: int, tx_id: bytes, invoice_list: InvoiceList = None, stellar_event: StellarEvent = None,
-        solana_event: SolanaEvent = None,
+        self, tx_id: bytes, solana_event: SolanaEvent, invoice_list: InvoiceList = None,
     ):
-        self.kin_version = kin_version
         self.tx_id = tx_id
         self.invoice_list = invoice_list
-        self.stellar_event = stellar_event
         self.solana_event = solana_event
 
     @classmethod
     def from_json(cls, data: dict) -> 'TransactionEvent':
-        kin_version = data.get('kin_version')
-        if not kin_version:
-            raise ValueError('kin_version is required')
-        if kin_version > 4 or kin_version < 2:
-            raise ValueError(f'invalid kin version: {kin_version}')
-
         tx_id = base64.b64decode(data.get('tx_id')) if 'tx_id' in data else b''
         if len(tx_id) == 0:
-            tx_id = base64.b64decode(data.get('tx_hash')) if 'tx_hash' in data else b''
-            if len(tx_id) == 0:
-                raise ValueError('`tx_id` or `tx_hash` is required')
+            raise ValueError('`tx_id` is required')
 
         il = data.get('invoice_list')
         if il:
@@ -117,16 +84,11 @@ class TransactionEvent:
         else:
             invoice_list = None
 
-        tx_event = cls(kin_version, tx_id, invoice_list=invoice_list)
-
         solana_data = data.get('solana_event', None)
-        if solana_data:
-            tx_event.solana_event = SolanaEvent.from_json(solana_data)
-        stellar_data = data.get('stellar_event', None)
-        if stellar_data:
-            tx_event.stellar_event = StellarEvent.from_json(stellar_data)
+        if not solana_data:
+            raise ValueError('`solana_event` is required')
 
-        return tx_event
+        return cls(tx_id, SolanaEvent.from_json(solana_data), invoice_list=invoice_list)
 
 
 class Event:

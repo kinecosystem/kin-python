@@ -7,7 +7,7 @@ from google.protobuf.json_format import MessageToDict
 from agora import solana
 from agora.error import InvalidSignatureError, BadNonceError
 from agora.model import AgoraMemo, TransactionType
-from agora.webhook.events import StellarEvent, TransactionEvent, Event, SolanaEvent
+from agora.webhook.events import TransactionEvent, Event, SolanaEvent
 from tests.utils import generate_keys
 
 
@@ -42,70 +42,7 @@ class TestSolanaData:
         assert solana_event.tx_error_raw == 'raw_error'
 
 
-class TestStellarData:
-    def test_from_json(self):
-        data = {
-            'result_xdr': 'resultxdr',
-            'envelope_xdr': 'envelopexdr'
-        }
-
-        stellar_event = StellarEvent.from_json(data)
-        assert stellar_event.result_xdr == 'resultxdr'
-        assert stellar_event.envelope_xdr == 'envelopexdr'
-
-
 class TestTransactionEvent:
-    def test_from_json_simple(self):
-        data = {
-            'kin_version': 3,
-            'tx_hash': base64.b64encode(b'txhash'),
-        }
-
-        event = TransactionEvent.from_json(data)
-        assert event.kin_version == 3
-        assert event.tx_id == b'txhash'
-        assert not event.invoice_list
-        assert not event.stellar_event
-        assert not event.solana_event
-
-    def test_from_json_full_kin_3(self):
-        il = model_pb2.InvoiceList(
-            invoices=[
-                model_pb2.Invoice(
-                    items=[
-                        model_pb2.Invoice.LineItem(title='title1', description='desc1', amount=50, sku=b'somesku')
-                    ]
-                )
-            ]
-        )
-
-        data = {
-            'kin_version': 3,
-            'tx_hash': base64.b64encode(b'txhash'),
-            'invoice_list': MessageToDict(il),
-            'stellar_event': {
-                'result_xdr': 'resultxdr',
-                'envelope_xdr': 'envelopexdr',
-            }
-        }
-
-        event = TransactionEvent.from_json(data)
-        assert event.kin_version == 3
-        assert event.tx_id == b'txhash'
-        assert len(event.invoice_list.invoices) == 1
-        assert len(event.invoice_list.invoices[0].items) == 1
-
-        line_item = event.invoice_list.invoices[0].items[0]
-        assert line_item.title == 'title1'
-        assert line_item.description == 'desc1'
-        assert line_item.amount == 50
-        assert line_item.sku == b'somesku'
-
-        assert event.stellar_event.result_xdr == 'resultxdr'
-        assert event.stellar_event.envelope_xdr == 'envelopexdr'
-
-        assert not event.solana_event
-
     def test_from_json_full_kin_4(self):
         memo = AgoraMemo.new(1, TransactionType.P2P, 0, b'somefk')
         keys = [key.public_key for key in generate_keys(4)]
@@ -135,8 +72,7 @@ class TestTransactionEvent:
         )
 
         data = {
-            'kin_version': 4,
-            'tx_id': base64.b64encode(b'txsig'),
+            'tx_id': base64.b64encode(b'txsig').decode('utf-8'),
             'invoice_list': MessageToDict(il),
             'solana_event': {
                 'transaction': base64.b64encode(tx.marshal()).decode('utf-8'),
@@ -146,7 +82,6 @@ class TestTransactionEvent:
         }
 
         event = TransactionEvent.from_json(data)
-        assert event.kin_version == 4
         assert event.tx_id == b'txsig'
         assert len(event.invoice_list.invoices) == 1
         assert len(event.invoice_list.invoices[0].items) == 1
@@ -157,29 +92,18 @@ class TestTransactionEvent:
         assert line_item.amount == 50
         assert line_item.sku == b'somesku'
 
-        assert not event.stellar_event
-
         assert event.solana_event.transaction == tx
         assert isinstance(event.solana_event.tx_error, BadNonceError)
         assert event.solana_event.tx_error_raw == 'raw_error'
 
     def test_from_json_invalid(self):
-        # missing/invalid kin_version
+        # missing tx_id
         with pytest.raises(ValueError):
-            TransactionEvent.from_json({'tx_hash': base64.b64encode(b'txhash')})
+            TransactionEvent.from_json({})
 
-        invalid_versions = [1, 5]
-        for version in invalid_versions:
-            data = {
-                'kin_version': version
-            }
-
+            # missing solana_event
             with pytest.raises(ValueError):
-                TransactionEvent.from_json(data)
-
-        # missing both tx_id and tx_hash
-        with pytest.raises(ValueError):
-            TransactionEvent.from_json({'kin_version': 3})
+                TransactionEvent.from_json({'tx_id': base64.b64encode(b'txsig')})
 
 
 class TestEvent:
@@ -188,11 +112,27 @@ class TestEvent:
         assert not event.transaction_event
 
     def test_from_json_with_tx_event(self):
+        keys = [key.public_key for key in generate_keys(4)]
+        tx = solana.Transaction.new(
+            keys[0],
+            [
+                solana.transfer(
+                    keys[1],
+                    keys[1],
+                    keys[2],
+                    20,
+                    keys[3],
+                ),
+            ]
+        )
+
         event = Event.from_json({
             'transaction_event': {
-                'kin_version': 3,
-                'tx_hash': base64.b64encode(b'txhash')
+                'tx_id': base64.b64encode(b'txsig'),
+                'solana_event': {
+                    'transaction': base64.b64encode(tx.marshal()).decode('utf-8'),
+                }
             }
         })
-        assert event.transaction_event.kin_version == 3
-        assert event.transaction_event.tx_id == b'txhash'
+        assert event.transaction_event.tx_id == b'txsig'
+        assert event.transaction_event.solana_event

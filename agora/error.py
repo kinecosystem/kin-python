@@ -3,9 +3,7 @@ from typing import List, Optional
 
 from agoraapi.common.v3 import model_pb2 as model_pb
 from agoraapi.common.v4 import model_pb2 as model_pb_v4
-from kin_base import stellarxdr
 from kin_base import transaction_envelope as te, operation
-from kin_base.stellarxdr import StellarXDR_const
 
 from agora import solana
 from agora.solana import decompile_transfer
@@ -26,9 +24,11 @@ class UnsupportedVersionError(Error):
     """Raised when an unsupported version of Kin is used
     """
 
+
 class UnsupportedMethodError(Error):
     """Raised when a method is not supported in the current environment.
     """
+
 
 class AccountExistsError(Error):
     """Raised when trying to create an account that already exists.
@@ -209,82 +209,6 @@ class TransactionErrors:
         self.tx_error = tx_error
         self.op_errors = op_errors if op_errors else []
         self.payment_errors = payment_errors if payment_errors else []
-
-    @staticmethod
-    def from_result(result_xdr: bytes) -> Optional['TransactionErrors']:
-        """Returns a :class:`TransactionResultErrors <TransactionResultErrors>` object from a base64-encoded transaction
-        result XDR from Agora.
-
-        :param result_xdr: A decoded transaction result XDR, in bytes.
-        :return: a :class:`Error <Error>` object or None
-        """
-        unpacker = stellarxdr.Xdr.StellarXDRUnpacker(result_xdr)
-        result = unpacker.unpack_TransactionResult()
-        tx_code = result.result.code
-
-        if tx_code == StellarXDR_const.txSUCCESS:
-            return None
-
-        if tx_code == StellarXDR_const.txFAILED:
-            op_errors = []
-
-            for op_result in result.result.results:
-                if op_result.tr.type == StellarXDR_const.CREATE_ACCOUNT:
-                    op_code = op_result.tr.createAccountResult.code
-                    if op_code == StellarXDR_const.CREATE_ACCOUNT_SUCCESS:
-                        op_errors.append(None)
-                    elif op_code == StellarXDR_const.CREATE_ACCOUNT_MALFORMED:
-                        op_errors.append(TransactionMalformedError())
-                    elif op_code == StellarXDR_const.CREATE_ACCOUNT_UNDERFUNDED:
-                        op_errors.append(InsufficientBalanceError())
-                    elif op_code == StellarXDR_const.CREATE_ACCOUNT_ALREADY_EXIST:
-                        op_errors.append(AccountExistsError())
-                    else:
-                        op_errors.append(Error(f'create account op failed with code: {op_code}'))
-
-                elif op_result.tr.type == StellarXDR_const.PAYMENT:
-                    op_code = op_result.tr.paymentResult.code
-                    if op_code == StellarXDR_const.PAYMENT_SUCCESS:
-                        op_errors.append(None)
-                    elif op_code == StellarXDR_const.PAYMENT_MALFORMED:
-                        op_errors.append(TransactionMalformedError())
-                    elif op_code == StellarXDR_const.PAYMENT_UNDERFUNDED:
-                        op_errors.append(InsufficientBalanceError())
-                    elif op_code == StellarXDR_const.PAYMENT_SRC_NOT_AUTHORIZED:
-                        op_errors.append(InvalidSignatureError())
-                    elif op_code == StellarXDR_const.PAYMENT_NO_DESTINATION:
-                        op_errors.append(DestinationDoesNotExistError())
-                    else:
-                        op_errors.append(Error(f'payment op failed with code: {op_code}'))
-
-                else:
-                    op_errors.append(Error(f'op of type {op_result.tr.type} failed'))
-
-            return TransactionErrors(tx_error=Error('transaction failed'), op_errors=op_errors,
-                                     payment_errors=op_errors)
-
-        if tx_code == StellarXDR_const.txMISSING_OPERATION:
-            return TransactionErrors(tx_error=TransactionMalformedError('the transaction has no operations'))
-
-        if tx_code == StellarXDR_const.txBAD_SEQ:
-            return TransactionErrors(tx_error=BadNonceError())
-
-        if tx_code == StellarXDR_const.txBAD_AUTH:
-            return TransactionErrors(tx_error=InvalidSignatureError('missing signature or wrong network'))
-
-        if tx_code == StellarXDR_const.txINSUFFICIENT_BALANCE:
-            return TransactionErrors(tx_error=InsufficientBalanceError())
-
-        if tx_code == StellarXDR_const.txNO_ACCOUNT:
-            return TransactionErrors(tx_error=SenderDoesNotExistError())
-
-        if tx_code == StellarXDR_const.txINSUFFICIENT_FEE:
-            return TransactionErrors(tx_error=InsufficientFeeError())
-
-        if tx_code == StellarXDR_const.txBAD_AUTH_EXTRA:
-            return TransactionErrors(tx_error=InvalidSignatureError('unused signature attached'))
-
-        return TransactionErrors(tx_error=Error(f'unknown result code: {tx_code}'))
 
     @staticmethod
     def from_proto_error(tx_error: model_pb_v4.TransactionError) -> Optional['TransactionErrors']:

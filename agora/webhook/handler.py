@@ -88,8 +88,12 @@ class WebhookHandler:
         except JSONDecodeError:
             return 400, 'invalid request body'
 
-        req = SignTransactionRequest.from_json(json_req_body, self.environment)
-        resp = SignTransactionResponse(req.envelope)
+        try:
+            req = SignTransactionRequest.from_json(json_req_body)
+        except ValueError:
+            return 400, 'invalid sign transaction request'
+
+        resp = SignTransactionResponse()
         try:
             f(req, resp)
         except WebhookRequestError as e:

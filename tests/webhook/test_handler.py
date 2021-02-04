@@ -4,15 +4,14 @@ import hmac
 import json
 from typing import List
 
-from kin_base import transaction_envelope as te
-
+from agora import solana
 from agora.client import Environment
 from agora.error import WebhookRequestError, InvoiceErrorReason
 from agora.keys import PrivateKey
 from agora.webhook.events import Event
 from agora.webhook.handler import WebhookHandler
 from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
-from tests.utils import gen_account_id, gen_payment_op, gen_tx_envelope_xdr, gen_text_memo
+from tests.utils import generate_keys
 
 _TEST_PRIVATE_KEY = PrivateKey.random()
 
@@ -36,10 +35,25 @@ class TestWebhookHandler:
         secret = 'secret'
         handler = WebhookHandler(Environment.TEST, secret=secret)
 
+        keys = [key.public_key for key in generate_keys(4)]
+        tx = solana.Transaction.new(
+            keys[0],
+            [
+                solana.transfer(
+                    keys[1],
+                    keys[1],
+                    keys[2],
+                    20,
+                    keys[3],
+                ),
+            ]
+        )
         data = [{
             'transaction_event': {
-                'kin_version': 3,
-                'tx_hash': base64.b64encode(b'txhash').decode(),
+                'tx_id': base64.b64encode(b'txsig').decode('utf-8'),
+                'solana_event': {
+                    'transaction': base64.b64encode(tx.marshal()).decode('utf-8'),
+                }
             }
         }]
         req_body = json.dumps(data)
@@ -79,15 +93,26 @@ class TestWebhookHandler:
         secret = 'secret'
         handler = WebhookHandler(Environment.TEST, secret=secret)
 
-        acc1 = gen_account_id()
-        acc2 = gen_account_id()
-        operations = [gen_payment_op(acc2)]
-        envelope_xdr = gen_tx_envelope_xdr(acc1, 1, operations,
-                                           gen_text_memo(b'somememo'))
+        keys = [key.public_key for key in generate_keys(4)]
+        token_program = keys[3]
+        tx = solana.Transaction.new(
+            keys[0],
+            [
+                solana.transfer(
+                    keys[1],
+                    keys[2],
+                    keys[3],
+                    20,
+                    token_program,
+                ),
+            ]
+        )
+
         data = {
-            'kin_version': 3,
-            'envelope_xdr': base64.b64encode(envelope_xdr).decode()
+            'kin_version': 4,
+            'solana_transaction': base64.b64encode(tx.marshal()).decode('utf-8'),
         }
+
         req_body = json.dumps(data)
         sig = base64.b64encode(hmac.new(secret.encode(), req_body.encode(), hashlib.sha256).digest())
         text_sig = base64.b64encode(hmac.new(secret.encode(), b'someotherdata', hashlib.sha256).digest())
@@ -126,17 +151,13 @@ class TestWebhookHandler:
         # successful
         status_code, resp_body = handler.handle_sign_transaction(self._sign_tx_success, sig, req_body)
         assert status_code == 200
-
-        actual_env = te.TransactionEnvelope.from_xdr(json.loads(resp_body)['envelope_xdr'])
-        _TEST_PRIVATE_KEY.public_key.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
+        assert json.loads(resp_body) == {}
 
         # fake signature with no webhook secret should result in a successful response
         handler = WebhookHandler(Environment.TEST)
         status_code, resp_body = handler.handle_sign_transaction(self._sign_tx_success, "fakesig", req_body)
         assert status_code == 200
-
-        actual_env = te.TransactionEnvelope.from_xdr(json.loads(resp_body)['envelope_xdr'])
-        _TEST_PRIVATE_KEY.public_key.verify(actual_env.hash_meta(), actual_env.signatures[-1].signature)
+        assert json.loads(resp_body) == {}
 
     @staticmethod
     def _event_return_none(events: List[Event]):

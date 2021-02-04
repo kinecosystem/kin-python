@@ -3,9 +3,6 @@ import decimal
 import sys
 from typing import Tuple
 
-from kin_base import transaction_envelope as te, transaction
-from kin_base.stellarxdr import Xdr as Xdr_kin
-
 _KIN_USER_AGENT_HEADER = 'kin-user-agent'
 _KIN_TO_QUARKS = decimal.Decimal(10 ** 5)
 _PRECISION = decimal.Decimal('0.00001')
@@ -53,21 +50,3 @@ def quarks_to_kin(quarks: int) -> str:
     """
     kin = (decimal.Decimal(quarks) / _KIN_TO_QUARKS)
     return str(kin)
-
-
-def envelope_from_xdr(network_id: str, xdr: bytes) -> te.TransactionEnvelope:
-    """Create a new TransactionEnvelope from an XDR string.
-
-    :param network_id: The network ID to instantiate the TransactionEnvelope with.
-    :param xdr: The XDR string
-    :return: a TransactionEnvelope
-    """
-    xdr_decoded = base64.b64decode(xdr)
-    env = Xdr_kin.StellarXDRUnpacker(xdr_decoded)
-    te_xdr_object = env.unpack_TransactionEnvelope()
-    signatures = te_xdr_object.signatures
-    tx_xdr_object = te_xdr_object.tx
-    tx = transaction.Transaction.from_xdr_object(tx_xdr_object)
-    env = te.TransactionEnvelope(tx, signatures=signatures, network_id=network_id)
-
-    return env

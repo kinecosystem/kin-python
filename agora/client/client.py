@@ -2,22 +2,21 @@ import base64
 from typing import List, Optional
 
 import grpc
-import kin_base
 from agoraapi.account.v4 import account_service_pb2_grpc as account_pb_grpc
 from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb
 
-from agora import KIN_2_PROD_NETWORK, KIN_2_TEST_NETWORK, solana
+from agora import solana
 from agora.client.account.resolution import AccountResolution
 from agora.client.account.resolver import TokenAccountResolver
 from agora.client.environment import Environment
 from agora.client.internal import InternalClient, SubmitTransactionResult
-from agora.error import AccountExistsError, InvoiceError, UnsupportedVersionError, TransactionMalformedError, \
-    SenderDoesNotExistError, InsufficientBalanceError, \
-    DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
+from agora.client.utils import _generate_token_account
+from agora.error import AccountExistsError, InvoiceError, TransactionMalformedError, SenderDoesNotExistError, \
+    InsufficientBalanceError, DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
     TransactionRejectedError, Error, BlockchainVersionError, AccountNotFoundError, NoSubsidizerError, \
     AlreadySubmittedError, invoice_error_from_proto, UnsupportedMethodError
-from agora.keys import PrivateKey, PublicKey, ED25519_PUB_KEY_SIZE
-from agora.model.earn import Earn, EarnBatch
+from agora.keys import PrivateKey, PublicKey
+from agora.model.earn import EarnBatch
 from agora.model.invoice import InvoiceList
 from agora.model.memo import AgoraMemo
 from agora.model.payment import Payment
@@ -26,36 +25,15 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy
-from agora.solana import Commitment, memo_instruction, transfer
-from agora.solana.transaction import MAX_TX_SIZE, SIGNATURE_LENGTH, HASH_LENGTH
-from agora.utils import quarks_to_kin
+from agora.solana import Commitment, system, token, memo
 
-_SUPPORTED_VERSIONS = [2, 3, 4]
+_MIN_VERSION = 4
+_MAX_VERSION = 4
 
 _ENDPOINTS = {
     Environment.PRODUCTION: 'api.agorainfra.net:443',
     Environment.TEST: 'api.agorainfra.dev:443',
 }
-
-# kin_base handles conversion of the network name to the appropriate passphrase if recognizes it, but otherwise will
-# use the provided network name as the passphrase
-_NETWORK_NAMES = {
-    2: {
-        Environment.PRODUCTION: KIN_2_PROD_NETWORK,
-        Environment.TEST: KIN_2_TEST_NETWORK,
-    },
-    3: {
-        Environment.PRODUCTION: 'PUBLIC',
-        Environment.TEST: 'TESTNET',
-    },
-}
-
-_KIN_2_ISSUERS = {
-    Environment.PRODUCTION: 'GDF42M3IPERQCBLWFEZKQRK77JQ65SCKTU3CW36HZVCX7XX5A5QXZIVK',
-    Environment.TEST: 'GBC3SG6NGTSZ2OMH3FFGB7UVRQWILW367U4GSOOF4TFSZONV42UJXUH7',
-}
-
-_KIN_2_ASSET_CODE = 'KIN'
 
 _NON_RETRIABLE_ERRORS = [
     AccountExistsError,
@@ -237,36 +215,28 @@ class Client(BaseClient):
     :param env: The :class:`Environment <agora.environment.Environment>` to use.
     :param app_index: (optional) The Agora index of the app, used for all transactions and requests. Required to make
         use of invoices.
-    :param whitelist_key: (optional) The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to whitelist
-        submitted transactions with.
+    :param kin_version: (optional) The version of Kin to use. Defaults to using Kin 4.
     :param grpc_channel: (optional) A GRPC :class:`Channel <grpc.Channel>` object to use for Agora requests. Only one of
         grpc_channel or endpoint should be set.
     :param endpoint: (optional) An endpoint to use instead of the default Agora endpoints. Only one of grpc_channel or
         endpoint should be set.
     :param retry_config: (optional): A :class:`RetryConfig <RetryConfig>` object to configure Agora retries. If not
         provided, a default configuration will be used.
-    :param kin_version: (optional) The version of Kin to use. Defaults to using Kin 3.
     :param default_commitment: (optional) The commitment requirement to use by default for Kin 4 Agora requests.
         Defaults to using Commitment.SINGLE.
-    :param desired_kin_version: (optional) A debugging parameter to force Agora to use a minimum kin version. Defaults
-        to None.
     """
 
     def __init__(
-        self, env: Environment, app_index: int = 0, whitelist_key: Optional[PrivateKey] = None,
+        self, env: Environment, app_index: int = 0,
         grpc_channel: Optional[grpc.Channel] = None, endpoint: Optional[str] = None,
-        retry_config: Optional[RetryConfig] = None, kin_version: Optional[int] = 3,
-        default_commitment: Optional[Commitment] = Commitment.SINGLE, desired_kin_version: Optional[int] = None,
+        retry_config: Optional[RetryConfig] = None,
+        default_commitment: Optional[Commitment] = Commitment.SINGLE,
     ):
-        if kin_version not in _SUPPORTED_VERSIONS:
-            raise ValueError(f'`kin_version` {kin_version} is not a supported version of Kin')
-        if desired_kin_version and desired_kin_version not in _SUPPORTED_VERSIONS:
-            raise ValueError(f'`desired_kin_version {desired_kin_version} is not a supported version of Kin')
-
-        self.app_index = app_index
-
         if grpc_channel and endpoint:
             raise ValueError('`grpc_channel` and `endpoint` cannot both be set')
+
+        self._env = env
+        self._app_index = app_index
 
         if not grpc_channel:
             endpoint = endpoint if endpoint else _ENDPOINTS[env]
@@ -287,19 +257,7 @@ class Client(BaseClient):
             LimitStrategy(retry_config.max_nonce_refreshes + 1)
         ]
 
-        self._kin_version = kin_version
-        self._env = env
-        if kin_version == 2:
-            self._asset_issuer = _KIN_2_ISSUERS[env]
-        else:
-            self._asset_issuer = None
-
-        if kin_version in [2, 3]:
-            self.network_name = _NETWORK_NAMES[kin_version][env]
-            self.whitelist_key = whitelist_key
-
-        self._internal_client = InternalClient(self._grpc_channel, self._internal_retry_strategies, self._kin_version,
-                                               desired_kin_version=desired_kin_version)
+        self._internal_client = InternalClient(self._grpc_channel, self._internal_retry_strategies)
 
         self._default_commitment = default_commitment
 
@@ -314,25 +272,12 @@ class Client(BaseClient):
 
     def create_account(self, private_key: PrivateKey, commitment: Optional[Commitment] = None,
                        subsidizer: Optional[PrivateKey] = None):
-        if self._kin_version not in _SUPPORTED_VERSIONS:
-            raise UnsupportedVersionError()
-
         commitment = commitment if commitment else self._default_commitment
-        if self._kin_version < 4:
-            try:
-                return self._internal_client.create_stellar_account(private_key)
-            except BlockchainVersionError:
-                self._set_kin_version(4)
-
-        def _submit_create_solana_account():
-            self._internal_client.create_solana_account(private_key, commitment=commitment, subsidizer=subsidizer)
-
-        return retry(self._nonce_retry_strategies, _submit_create_solana_account)
+        min_balance_resp = self._internal_client.get_minimum_balance_for_rent_exception()
+        return retry(self._nonce_retry_strategies, self._create_solana_account, private_key, commitment,
+                     min_balance_resp.lamports, subsidizer)
 
     def get_transaction(self, tx_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
-        if self._kin_version < 4:
-            return self._internal_client.get_stellar_transaction(tx_id)
-
         commitment = commitment if commitment else self._default_commitment
         return self._internal_client.get_transaction(tx_id, commitment)
 
@@ -340,16 +285,7 @@ class Client(BaseClient):
         self, public_key: PublicKey, commitment: Optional[Commitment] = None,
         account_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
     ) -> int:
-        if self._kin_version not in _SUPPORTED_VERSIONS:
-            raise UnsupportedVersionError()
-
         commitment = commitment if commitment else self._default_commitment
-        if self._kin_version < 4:
-            try:
-                return self._internal_client.get_stellar_account_info(public_key).balance
-            except BlockchainVersionError:
-                self._set_kin_version(4)
-
         try:
             return self._internal_client.get_solana_account_info(public_key, commitment=commitment).balance
         except AccountNotFoundError as e:
@@ -361,9 +297,6 @@ class Client(BaseClient):
             raise e
 
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
-        if self._kin_version != 4:
-            raise UnsupportedVersionError("`resolve_token_accounts` is only available on Kin 4")
-
         return self._token_account_resolver.resolve_token_accounts(public_key)
 
     def submit_payment(
@@ -371,27 +304,14 @@ class Client(BaseClient):
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
     ) -> bytes:
-        if self._kin_version not in _SUPPORTED_VERSIONS:
-            raise UnsupportedVersionError()
-
-        if payment.invoice and self.app_index <= 0:
+        if payment.invoice and self._app_index <= 0:
             raise ValueError('cannot submit a payment with an invoice without an app index')
 
         commitment = commitment if commitment else self._default_commitment
-        if self._kin_version not in [2, 3]:
-            result = self._resolve_and_submit_solana_payment(
-                payment, commitment, sender_resolution=sender_resolution,
-                dest_resolution=dest_resolution
-            )
-        else:
-            try:
-                result = self._submit_stellar_payment_tx(payment)
-            except BlockchainVersionError:
-                self._set_kin_version(4)
-                result = self._resolve_and_submit_solana_payment(
-                    payment, commitment, sender_resolution=sender_resolution,
-                    dest_resolution=dest_resolution
-                )
+        result = self._resolve_and_submit_solana_payment(
+            payment, commitment, sender_resolution=sender_resolution,
+            dest_resolution=dest_resolution
+        )
 
         if result.errors:
             if len(result.errors.op_errors) > 0:
@@ -416,9 +336,6 @@ class Client(BaseClient):
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
     ) -> EarnBatchResult:
-        if self._kin_version not in _SUPPORTED_VERSIONS:
-            raise UnsupportedVersionError
-
         if len(batch.earns) == 0:
             raise ValueError('earn batch must contain at least 1 earn')
         if len(batch.earns) > 15:
@@ -426,24 +343,21 @@ class Client(BaseClient):
 
         invoices = [earn.invoice for earn in batch.earns if earn.invoice]
         if invoices:
-            if self.app_index <= 0:
+            if self._app_index <= 0:
                 raise ValueError('cannot submit a payment with an invoice without an app index')
             if len(invoices) != len(batch.earns):
                 raise ValueError('Either all or none of the earns must contain invoices')
             if batch.memo:
                 raise ValueError('Cannot use both text memo and invoices')
 
-        if self._kin_version in [2, 3]:
-            submit_result = self._submit_stellar_earn_batch_tx(batch)
-        else:
-            service_config = self._internal_client.get_service_config()
-            if not service_config.subsidizer_account.value and not batch.subsidizer:
-                raise NoSubsidizerError()
+        service_config = self._internal_client.get_service_config()
+        if not service_config.subsidizer_account.value and not batch.subsidizer:
+            raise NoSubsidizerError()
 
-            commitment = commitment if commitment else self._default_commitment
-            submit_result = self._resolve_and_submit_solana_earn_batch(batch, service_config, commitment=commitment,
-                                                                       sender_resolution=sender_resolution,
-                                                                       dest_resolution=dest_resolution)
+        commitment = commitment if commitment else self._default_commitment
+        submit_result = self._resolve_and_submit_solana_earn_batch(batch, service_config, commitment=commitment,
+                                                                   sender_resolution=sender_resolution,
+                                                                   dest_resolution=dest_resolution)
 
         result = EarnBatchResult(submit_result.tx_id)
         if submit_result.errors:
@@ -474,69 +388,51 @@ class Client(BaseClient):
     def close(self) -> None:
         self._grpc_channel.close()
 
-    def _partition_earns_for_solana(
-        self, earns: List[Earn], sender_resolution: AccountResolution, memo: Optional[str] = None,
-    ) -> List[List[Earn]]:
-        include_agora_memo = memo is None and self.app_index > 0
-        batches = []
-
-        offset = 0
-        for i in range(1, len(earns) + 1):
-            # To avoid having to re-partition earns in the case that the sender account needs to be resolved, if sender
-            # resolution is PREFERRED, include it in the estimation of the transaction size
-            tx_size = self._estimate_earn_batch_tx_size(
-                earns[offset:i],
-                has_separate_sender=sender_resolution == AccountResolution.PREFERRED,
-                has_agora_memo=include_agora_memo,
-                memo=memo
-            )
-            if tx_size > MAX_TX_SIZE:
-                batches.append(earns[offset:i - 1])
-                offset = i - 1
-            elif tx_size == MAX_TX_SIZE or i == len(earns):
-                batches.append(earns[offset:i])
-                offset = i
-
-        return batches
-
-    @staticmethod
-    def _estimate_earn_batch_tx_size(
-        earns: List[Earn], has_separate_sender: bool = False, has_agora_memo: bool = False, memo: Optional[str] = None,
+    def _create_solana_account(
+        self, private_key: PrivateKey, commitment: Commitment, min_balance: int, subsidizer: Optional[PrivateKey] = None
     ):
-        """
-        Estimates the size of a transaction by adding following components:
-        - Signatures: 1 (shortvec) + sig_count * SIGNATURE_LENGTH
-        - Header bytes: 3
-        - Accounts: 1 (shortvec) + account_count * ED25519_PUB_KEY_SIZE
-        - Hash Length
-        - For instructions:
-            - 1 byte (shortvec)
-            - (optional, if Agora memo included) Agora memo: ED25519_PUB_KEY_SIZE + 1 (program index) + 1 (account
-              shortvec) + 1 (data shortvec) + 44 (length of a base64-encoded Agora memo) = 79
-            - (optional) memo: ED25519_PUB_KEY_SIZE + 1 (program index) + 1 (account shortvec) + data shortvec +
-              len(data) = 34 + data shortvec + len(data)
-            - Each transfer: 1 (program index) + 1 (account shortvec) + 3 (3 account indices) + 1 (data shortvec) +
-              9 (transfer data length) = 15
+        token_account_key = _generate_token_account(private_key)
 
-        :return:
-        """
-        # unique destinations + subsidizer + owner + program + (optional) resolved transfer sender
-        account_count = len({earn.destination.raw for earn in earns}) + 3 + (1 if has_separate_sender else 0)
-        # owner, subsidizer
-        sig_count = 2
+        service_config_resp = self._internal_client.get_service_config()
+        if not service_config_resp.subsidizer_account.value and not subsidizer:
+            raise NoSubsidizerError()
 
-        return (1 + sig_count * SIGNATURE_LENGTH +
-                3 +
-                Client._estimate_shortvec_size(account_count) + account_count * ED25519_PUB_KEY_SIZE +
-                HASH_LENGTH +
-                1 +
-                (79 if has_agora_memo else 0) +
-                ((34 + Client._estimate_shortvec_size(len(memo)) + len(memo)) if memo else 0) +
-                len(earns) * 15)
+        subsidizer_id = (subsidizer.public_key if subsidizer else
+                         PublicKey(service_config_resp.subsidizer_account.value))
 
-    @staticmethod
-    def _estimate_shortvec_size(length: int) -> int:
-        return 1 if length < 128 else 2 if length < 16384 else 3
+        recent_blockhash_resp = self._internal_client.get_recent_blockhash()
+        token_program = PublicKey(service_config_resp.token_program.value)
+        transaction = solana.Transaction.new(
+            subsidizer_id,
+            [
+                system.create_account(
+                    subsidizer_id,
+                    token_account_key.public_key,
+                    token_program,
+                    min_balance,
+                    token.ACCOUNT_SIZE,
+                ),
+                token.initialize_account(
+                    token_account_key.public_key,
+                    PublicKey(service_config_resp.token.value),
+                    private_key.public_key,
+                    token_program,
+                ),
+                token.set_authority(
+                    token_account_key.public_key,
+                    private_key.public_key,
+                    token.AuthorityType.CloseAccount,
+                    token_program,
+                    new_authority=subsidizer_id,
+                )
+            ]
+        )
+        transaction.set_blockhash(recent_blockhash_resp.blockhash.value)
+        transaction.sign([private_key, token_account_key])
+        if subsidizer:
+            transaction.sign([subsidizer])
+
+        self._internal_client.create_solana_account(transaction, commitment)
 
     def _resolve_and_submit_solana_payment(
         self, payment: Payment, commitment: Commitment,
@@ -611,17 +507,17 @@ class Client(BaseClient):
         instructions = []
         invoice_list = None
         if payment.memo:
-            instructions = [memo_instruction(payment.memo)]
-        elif self.app_index > 0:
+            instructions = [memo.memo_instruction(payment.memo)]
+        elif self._app_index > 0:
             if payment.invoice:
                 invoice_list = InvoiceList(invoices=[payment.invoice])
             fk = invoice_list.get_sha_224_hash() if payment.invoice else b''
-            memo = AgoraMemo.new(1, payment.tx_type, self.app_index, fk)
-            instructions = [memo_instruction(base64.b64encode(memo.val).decode('utf-8'))]
+            m = AgoraMemo.new(1, payment.tx_type, self._app_index, fk)
+            instructions = [memo.memo_instruction(base64.b64encode(m.val).decode('utf-8'))]
 
         sender = transfer_sender if transfer_sender else payment.sender.public_key
-        instructions.append(transfer(sender, payment.destination, payment.sender.public_key,
-                                     payment.quarks, token_program))
+        instructions.append(token.transfer(sender, payment.destination, payment.sender.public_key,
+                                           payment.quarks, token_program))
 
         tx = solana.Transaction.new(subsidizer_id, instructions)
         if payment.subsidizer:
@@ -642,17 +538,17 @@ class Client(BaseClient):
 
         transfer_sender = transfer_sender if transfer_sender else batch.sender.public_key
         instructions = [
-            transfer(transfer_sender, earn.destination, batch.sender.public_key, earn.quarks, token_program)
+            token.transfer(transfer_sender, earn.destination, batch.sender.public_key, earn.quarks, token_program)
             for earn in batch.earns]
 
         invoices = [earn.invoice for earn in batch.earns if earn.invoice]
         invoice_list = InvoiceList(invoices) if invoices else None
         if batch.memo:
-            instructions = [memo_instruction(batch.memo)] + instructions
-        elif self.app_index > 0:
+            instructions = [memo.memo_instruction(batch.memo)] + instructions
+        elif self._app_index > 0:
             fk = invoice_list.get_sha_224_hash() if invoice_list else b''
-            agora_memo = AgoraMemo.new(1, TransactionType.EARN, self.app_index, fk)
-            instructions = [memo_instruction(base64.b64encode(agora_memo.val).decode('utf-8'))] + instructions
+            agora_memo = AgoraMemo.new(1, TransactionType.EARN, self._app_index, fk)
+            instructions = [memo.memo_instruction(base64.b64encode(agora_memo.val).decode('utf-8'))] + instructions
 
         tx = solana.Transaction.new(subsidizer_id, instructions)
         if batch.subsidizer:
@@ -680,129 +576,3 @@ class Client(BaseClient):
             return result
 
         return retry(self._nonce_retry_strategies, _get_blockhash_and_submit)
-
-    def _submit_stellar_payment_tx(self, payment: Payment) -> SubmitTransactionResult:
-        builder = self._get_stellar_builder(payment.channel if payment.channel else payment.sender)
-
-        invoice_list = None
-        if payment.memo:
-            builder.add_text_memo(payment.memo)
-        elif self.app_index > 0:
-            if payment.invoice:
-                invoice_list = InvoiceList(invoices=[payment.invoice])
-
-            fk = invoice_list.get_sha_224_hash() if payment.invoice else b''
-            memo = AgoraMemo.new(1, payment.tx_type, self.app_index, fk)
-            builder.add_hash_memo(memo.val)
-
-        # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
-        # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
-        # Stellar denomination of 1e-7.
-        #
-        # The Kin amounts provided to `append_payment_op` get converted to the smallest denomination inside the
-        # submitted transaction and the conversion occurs assuming a smallest denomination of 1e-5. Therefore, for
-        # Kin 2 transactions, we must multiple by 100 to account for the scaling factor.
-        builder.append_payment_op(
-            payment.destination.stellar_address,
-            quarks_to_kin(payment.quarks * 100 if self._kin_version == 2 else payment.quarks),
-            source=payment.sender.public_key.stellar_address,
-            asset_issuer=self._asset_issuer if self._kin_version == 2 else None,
-        )
-
-        if payment.channel and payment.channel != payment.sender:
-            signers = [payment.channel, payment.sender]
-        else:
-            signers = [payment.sender]
-
-        if self.whitelist_key and self.whitelist_key not in signers:
-            signers.append(self.whitelist_key)
-
-        return self._sign_and_submit_builder(signers, builder, invoice_list)
-
-    def _submit_stellar_earn_batch_tx(self, batch: EarnBatch) -> SubmitTransactionResult:
-        if len(batch.earns) > 100:
-            raise ValueError('cannot send more than 100 earns')
-
-        builder = self._get_stellar_builder(batch.channel if batch.channel else batch.sender)
-
-        invoices = [earn.invoice for earn in batch.earns if earn.invoice]
-        invoice_list = InvoiceList(invoices) if invoices else None
-        if batch.memo:
-            builder.add_text_memo(batch.memo)
-        elif self.app_index > 0:
-            fk = invoice_list.get_sha_224_hash() if invoice_list else b''
-            memo = AgoraMemo.new(1, TransactionType.EARN, self.app_index, fk)
-            builder.add_hash_memo(memo.val)
-
-        for earn in batch.earns:
-            # Inside the kin_base module, the base currency has been 'scaled' by a factor of 100 from
-            # Stellar (i.e., the smallest denomination used is 1e-5 instead of 1e-7). However, Kin 2 uses the minimum
-            # Stellar denomination of 1e-7.
-            #
-            # The Kin amounts provided to `append_payment_op` get converted to the smallest denomination inside the
-            # submitted transaction and the conversion occurs assuming a smallest denomination of 1e-5. Therefore, for
-            # Kin 2 transactions, we must multiple by 100 to account for the scaling factor.
-            builder.append_payment_op(
-                earn.destination.stellar_address,
-                quarks_to_kin(earn.quarks * 100 if self._kin_version == 2 else earn.quarks),
-                source=batch.sender.public_key.stellar_address,
-                asset_issuer=self._asset_issuer if self._kin_version == 2 else None,
-            )
-
-        if batch.channel and batch.channel != batch.sender:
-            signers = [batch.channel, batch.sender]
-        else:
-            signers = [batch.sender]
-
-        if self.whitelist_key and self.whitelist_key not in signers:
-            signers.append(self.whitelist_key)
-
-        result = self._sign_and_submit_builder(signers, builder, invoice_list)
-        if result.invoice_errors:
-            # Invoice errors should not be triggered on earns. This indicates there is something wrong with the service.
-            raise Error('unexpected invoice errors present')
-
-        return result
-
-    def _sign_and_submit_builder(
-        self, signers: List[PrivateKey], builder: kin_base.Builder, invoice_list: Optional[InvoiceList] = None
-    ) -> SubmitTransactionResult:
-        source_info = self._internal_client.get_stellar_account_info(signers[0].public_key)
-        offset = 1
-
-        def _sign_and_submit():
-            nonlocal offset
-
-            # reset generated tx and te
-            builder.tx = None
-            builder.te = None
-
-            builder.sequence = source_info.sequence_number + offset
-            for signer in signers:
-                builder.sign(signer.stellar_seed)
-
-            result = self._internal_client.submit_stellar_transaction(base64.b64decode(builder.gen_xdr()), invoice_list)
-
-            if result.errors and isinstance(result.errors.tx_error, BadNonceError):
-                offset += 1
-                raise result.errors.tx_error
-
-            return result
-
-        return retry(self._nonce_retry_strategies, _sign_and_submit)
-
-    def _get_stellar_builder(self, source: PrivateKey) -> kin_base.Builder:
-        """Returns a Stellar transaction builder.
-
-        :param source: The transaction source account.
-        :return: a :class:`Builder` <kin_base.Builder> object.
-        """
-        # A Horizon instance is expected as the first argument, but it isn't used, so pass None instead to avoid
-        # unnecessary aiohttp.ClientSessions getting opened.
-        return kin_base.Builder(None, self.network_name,
-                                100,
-                                source.stellar_seed)
-
-    def _set_kin_version(self, kin_version):
-        self._kin_version = kin_version
-        self._internal_client.set_kin_version(kin_version)

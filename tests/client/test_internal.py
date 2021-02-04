@@ -1,5 +1,4 @@
 import base64
-import hashlib
 from concurrent import futures
 from typing import Tuple
 
@@ -17,17 +16,16 @@ from agora.client.client import _NON_RETRIABLE_ERRORS
 from agora.client.internal import InternalClient
 from agora.client.utils import _generate_token_account
 from agora.error import AccountExistsError, AccountNotFoundError, Error, TransactionRejectedError, BadNonceError, \
-    InsufficientBalanceError, PayerRequiredError, NoSubsidizerError, AlreadySubmittedError
+    InsufficientBalanceError, PayerRequiredError, AlreadySubmittedError
 from agora.keys import PrivateKey
 from agora.model import TransactionType, AgoraMemo
 from agora.model.transaction import TransactionState
 from agora.retry import NonRetriableErrorsStrategy, LimitStrategy
-from agora.solana import Transaction, Commitment
+from agora.solana import Transaction, Commitment, system
 from agora.solana import token
 from agora.solana.memo import memo_instruction
-from agora.solana.system import decompile_create_account
-from agora.solana.token import decompile_initialize_account, transfer, decompile_set_authority
-from agora.solana.transaction import HASH_LENGTH, SIGNATURE_LENGTH
+from agora.solana.token import transfer
+from agora.solana.transaction import HASH_LENGTH
 from agora.utils import user_agent
 from agora.version import VERSION
 from tests.utils import generate_keys
@@ -70,7 +68,7 @@ def executor():
 def no_retry_client(grpc_channel) -> InternalClient:
     """Returns an AgoraClient that has an app index and no retrying configured.
     """
-    return InternalClient(grpc_channel, [], kin_version=4)
+    return InternalClient(grpc_channel, [])
 
 
 @pytest.fixture(scope='class')
@@ -81,7 +79,7 @@ def retry_client(grpc_channel):
         NonRetriableErrorsStrategy(_NON_RETRIABLE_ERRORS),
         LimitStrategy(3),
     ]
-    return InternalClient(grpc_channel, retry_strategies, kin_version=4)
+    return InternalClient(grpc_channel, retry_strategies)
 
 
 class TestInternalClientV4:
@@ -98,41 +96,23 @@ class TestInternalClientV4:
         assert future.result() == 4
 
     def test_create_solana_account(self, grpc_channel, executor, no_retry_client):
-        private_key = PrivateKey.random()
-        token_account_key = _generate_token_account(private_key)
+        tx = self._generate_create_tx()
 
-        no_retry_client._response_cache.clear_all()
-        future = executor.submit(no_retry_client.create_solana_account, private_key)
-
-        self._set_get_service_config_resp(grpc_channel)
-        self._set_get_recent_blockhash_resp(grpc_channel)
-        self._set_get_min_balance_response(grpc_channel)
+        # Test default commitment
+        future = executor.submit(no_retry_client.create_solana_account, tx)
 
         req = self._set_create_account_resp(grpc_channel, account_pb_v4.CreateAccountResponse())
+        assert req.transaction.value == tx.marshal()
+        assert req.commitment == model_pb_v4.Commitment.SINGLE
 
-        tx = Transaction.unmarshal(req.transaction.value)
-        assert len(tx.signatures) == 3
-        assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-        assert token_account_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
-        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[2])
+        assert not future.result()
 
-        sys_create = decompile_create_account(tx.message, 0)
-        assert sys_create.funder == _subsidizer
-        assert sys_create.address == token_account_key.public_key
-        assert sys_create.owner == _token_program
-        assert sys_create.lamports == _min_balance
-        assert sys_create.size == token.ACCOUNT_SIZE
+        # Test other commitment
+        future = executor.submit(no_retry_client.create_solana_account, tx, Commitment.MAX)
 
-        token_init = decompile_initialize_account(tx.message, 1, _token_program)
-        assert token_init.account == token_account_key.public_key
-        assert token_init.mint == _token
-        assert token_init.owner == private_key.public_key
-
-        token_set_auth = decompile_set_authority(tx.message, 2, _token_program)
-        assert token_set_auth.account == token_account_key.public_key
-        assert token_set_auth.current_authority == private_key.public_key
-        assert token_set_auth.authority_type == token.AuthorityType.CloseAccount
-        assert token_set_auth.new_authority == _subsidizer
+        req = self._set_create_account_resp(grpc_channel, account_pb_v4.CreateAccountResponse())
+        assert req.transaction.value == tx.marshal()
+        assert req.commitment == model_pb_v4.Commitment.MAX
 
         assert not future.result()
 
@@ -144,100 +124,17 @@ class TestInternalClientV4:
             (account_pb_v4.CreateAccountResponse.Result.BAD_NONCE, BadNonceError),
         ]
     )
-    def test_create_account_errors(self, grpc_channel, executor, no_retry_client, result, error_type):
-        private_key = PrivateKey.random()
-        token_account_key = PrivateKey(hashlib.sha256(private_key.raw).digest())
+    def test_create_solana_account_errors(self, grpc_channel, executor, no_retry_client, result, error_type):
+        tx = self._generate_create_tx()
 
-        no_retry_client._response_cache.clear_all()
-        future = executor.submit(no_retry_client.create_solana_account, private_key)
-
-        self._set_get_service_config_resp(grpc_channel)
-        self._set_get_recent_blockhash_resp(grpc_channel)
-        self._set_get_min_balance_response(grpc_channel)
+        future = executor.submit(no_retry_client.create_solana_account, tx)
 
         resp = account_pb_v4.CreateAccountResponse(result=result)
         req = self._set_create_account_resp(grpc_channel, resp)
-
-        tx = Transaction.unmarshal(req.transaction.value)
-        assert len(tx.signatures) == 3
-        assert tx.signatures[0] == bytes(SIGNATURE_LENGTH)
-        assert token_account_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
-        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[2])
-
-        sys_create = decompile_create_account(tx.message, 0)
-        assert sys_create.funder == _subsidizer
-        assert sys_create.address == token_account_key.public_key
-        assert sys_create.owner == _token_program
-        assert sys_create.lamports == _min_balance
-        assert sys_create.size == token.ACCOUNT_SIZE
-
-        token_init = decompile_initialize_account(tx.message, 1, _token_program)
-        assert token_init.account == token_account_key.public_key
-        assert token_init.mint == _token
-        assert token_init.owner == private_key.public_key
-
-        token_set_auth = decompile_set_authority(tx.message, 2, _token_program)
-        assert token_set_auth.account == token_account_key.public_key
-        assert token_set_auth.current_authority == private_key.public_key
-        assert token_set_auth.authority_type == token.AuthorityType.CloseAccount
-        assert token_set_auth.new_authority == _subsidizer
+        assert req.transaction.value == tx.marshal()
 
         with pytest.raises(error_type):
             future.result()
-
-    def test_create_account_no_service_subsidizer(self, grpc_channel, executor, no_retry_client):
-        private_key = PrivateKey.random()
-        token_account_key = _generate_token_account(private_key)
-
-        no_retry_client._response_cache.clear_all()
-        future = executor.submit(no_retry_client.create_solana_account, private_key)
-
-        md, request, rpc = grpc_channel.take_unary_unary(
-            tx_pb_v4.DESCRIPTOR.services_by_name['Transaction'].methods_by_name['GetServiceConfig']
-        )
-        rpc.terminate(tx_pb_v4.GetServiceConfigResponse(
-            token=model_pb_v4.SolanaAccountId(value=_token.raw),
-            token_program=model_pb_v4.SolanaAccountId(value=_token_program.raw),
-        ), (), grpc.StatusCode.OK, '')
-
-        TestInternalClientV4._assert_metadata(md)
-
-        with pytest.raises(NoSubsidizerError):
-            future.result()
-
-        subsidizer = PrivateKey.random()
-        future = executor.submit(no_retry_client.create_solana_account, private_key, subsidizer=subsidizer)
-
-        self._set_get_recent_blockhash_resp(grpc_channel)
-        self._set_get_min_balance_response(grpc_channel)
-
-        req = self._set_create_account_resp(grpc_channel, account_pb_v4.CreateAccountResponse())
-
-        tx = Transaction.unmarshal(req.transaction.value)
-        assert len(tx.signatures) == 3
-        assert subsidizer.public_key.verify(tx.message.marshal(), tx.signatures[0])
-        assert token_account_key.public_key.verify(tx.message.marshal(), tx.signatures[1])
-        assert private_key.public_key.verify(tx.message.marshal(), tx.signatures[2])
-
-        sys_create = decompile_create_account(tx.message, 0)
-        assert sys_create.funder == subsidizer.public_key
-        assert sys_create.address == token_account_key.public_key
-        assert sys_create.owner == _token_program
-        assert sys_create.lamports == _min_balance
-        assert sys_create.size == token.ACCOUNT_SIZE
-
-        token_init = decompile_initialize_account(tx.message, 1, _token_program)
-        assert token_init.account == token_account_key.public_key
-        assert token_init.mint == _token
-        assert token_init.owner == private_key.public_key
-
-        token_set_auth = decompile_set_authority(tx.message, 2, _token_program)
-        assert token_set_auth.account == token_account_key.public_key
-        assert token_set_auth.current_authority == private_key.public_key
-        assert token_set_auth.authority_type == token.AuthorityType.CloseAccount
-        assert token_set_auth.new_authority == subsidizer.public_key
-
-        assert not future.result()
 
     def test_get_account_info(self, grpc_channel, executor, no_retry_client):
         private_key = PrivateKey.random()
@@ -253,7 +150,6 @@ class TestInternalClientV4:
         account_info = future.result()
         assert account_info.account_id == private_key.public_key.raw
         assert account_info.balance == 10
-        assert not account_info.sequence_number
 
     def test_get_account_info_not_found(self, grpc_channel, executor, no_retry_client):
         private_key = PrivateKey.random()
@@ -528,7 +424,7 @@ class TestInternalClientV4:
         with pytest.raises(InsufficientBalanceError):
             future.result()
 
-    def test_kin_4_get_service_config_cache(self, grpc_channel, executor, no_retry_client):
+    def test_get_service_config_cache(self, grpc_channel, executor, no_retry_client):
         no_retry_client._response_cache.clear_all()
 
         future = executor.submit(no_retry_client.get_service_config)
@@ -652,5 +548,35 @@ class TestInternalClientV4:
             _subsidizer,
             [
                 token.transfer(sender, dest, owner, 0, _token_program)
+            ]
+        )
+
+    @staticmethod
+    def _generate_create_tx():
+        private_key = PrivateKey.random()
+        token_account_key = _generate_token_account(private_key)
+        return solana.Transaction.new(
+            _subsidizer,
+            [
+                system.create_account(
+                    _subsidizer,
+                    token_account_key.public_key,
+                    _token_program,
+                    10,
+                    token.ACCOUNT_SIZE,
+                ),
+                token.initialize_account(
+                    token_account_key.public_key,
+                    _token,
+                    private_key.public_key,
+                    _token_program,
+                ),
+                token.set_authority(
+                    token_account_key.public_key,
+                    private_key.public_key,
+                    token.AuthorityType.CloseAccount,
+                    _token_program,
+                    new_authority=_subsidizer,
+                )
             ]
         )
