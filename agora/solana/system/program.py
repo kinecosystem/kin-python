@@ -5,7 +5,12 @@ from agora.keys import PublicKey
 from agora.solana.instruction import Instruction, AccountMeta
 from agora.solana.transaction import Message
 
-_PROGRAM_KEY = PublicKey(bytes(32))
+PROGRAM_KEY = PublicKey(bytes(32))
+
+# RentSysVar points to the system variable "Rent"
+#
+# Source: https://github.com/solana-labs/solana/blob/f02a78d8fff2dd7297dc6ce6eb5a68a3002f5359/sdk/src/sysvar/rent.rs#L11
+RENT_SYS_VAR = PublicKey.from_base58('SysvarRent111111111111111111111111111111111')
 
 
 class Command(IntEnum):
@@ -50,7 +55,7 @@ def create_account(
     data.extend(owner.raw)
 
     return Instruction(
-        _PROGRAM_KEY,
+        PROGRAM_KEY,
         data,
         [
             AccountMeta.new(subsidizer, True),
@@ -72,7 +77,7 @@ def decompile_create_account(m: Message, index: int) -> DecompiledCreateAccount:
         raise ValueError(f"instruction doesn't exist at {index}")
 
     i = m.instructions[index]
-    if m.accounts[i.program_index] != _PROGRAM_KEY:
+    if m.accounts[i.program_index] != PROGRAM_KEY:
         raise ValueError('incorrect program')
 
     if len(i.accounts) != 2:

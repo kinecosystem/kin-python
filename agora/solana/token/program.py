@@ -3,16 +3,14 @@ from enum import IntEnum
 from typing import NamedTuple, Optional
 
 from agora.keys import PublicKey, ED25519_PUB_KEY_SIZE
+from agora.solana import system
 from agora.solana.instruction import Instruction, AccountMeta
 from agora.solana.transaction import Message
 
 # Reference: https://github.com/solana-labs/solana-program-library/blob/11b1e3eefdd4e523768d63f7c70a7aa391ea0d02/token/program/src/state.rs#L125  # noqa: E501
 ACCOUNT_SIZE = 165
 
-# RentSysVar points to the system variable "Rent"
-#
-# Source: https://github.com/solana-labs/solana/blob/f02a78d8fff2dd7297dc6ce6eb5a68a3002f5359/sdk/src/sysvar/rent.rs#L11
-_RENT_SYS_VAR = PublicKey.from_base58('SysvarRent111111111111111111111111111111111')
+PROGRAM_KEY = PublicKey.from_base58("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
 
 
 class Command(IntEnum):
@@ -35,14 +33,28 @@ class Command(IntEnum):
 
 
 class AuthorityType(IntEnum):
-    MintTokens = 0
-    FreezeAccount = 1
-    AccountHolder = 2
-    CloseAccount = 3
+    MINT_TOKENS = 0
+    FREEZE_ACCOUNT = 1
+    ACCOUNT_HOLDER = 2
+    CLOSE_ACCOUNT = 3
 
 
-# Reference: https://github.com/solana-labs/solana-program-library/blob/b011698251981b5a12088acba18fad1d41c3719a/token/program/src/instruction.rs#L41-L55
-def initialize_account(account: PublicKey, mint: PublicKey, owner: PublicKey, token_program: PublicKey) -> Instruction:
+def get_command(m: Message, index: int) -> Command:
+    if index >= len(m.instructions):
+        raise ValueError(f"instruction doesn't exist at {index}")
+
+    i = m.instructions[index]
+    if m.accounts[i.program_index] != PROGRAM_KEY:
+        raise ValueError('incorrect program')
+
+    if len(i.data) == 0:
+        raise ValueError('token instruction missing data')
+
+    return Command(i.data[0])
+
+
+# Reference: https://github.com/solana-labs/solana-program-library/blob/b011698251981b5a12088acba18fad1d41c3719a/token/program/src/instruction.rs#L41-L55  # noqa: e501
+def initialize_account(account: PublicKey, mint: PublicKey, owner: PublicKey) -> Instruction:
     """
     // Accounts expected by this instruction:
     //
@@ -55,20 +67,18 @@ def initialize_account(account: PublicKey, mint: PublicKey, owner: PublicKey, to
     """
 
     return Instruction(
-        token_program,
+        PROGRAM_KEY,
         bytes([Command.INITIALIZE_ACCOUNT]),
         [
             AccountMeta.new(account, True),
             AccountMeta.new_read_only(mint, False),
             AccountMeta.new_read_only(owner, False),
-            AccountMeta.new_read_only(_RENT_SYS_VAR, False),
+            AccountMeta.new_read_only(system.RENT_SYS_VAR, False),
         ]
     )
 
 
-def transfer(
-    source: PublicKey, dest: PublicKey, owner: PublicKey, amount: int, token_program: PublicKey
-) -> Instruction:
+def transfer(source: PublicKey, dest: PublicKey, owner: PublicKey, amount: int) -> Instruction:
     """
     // Accounts expected by this instruction:
     //
@@ -89,7 +99,7 @@ def transfer(
     data.extend(amount.to_bytes(8, 'little'))
 
     return Instruction(
-        token_program,
+        PROGRAM_KEY,
         data,
         [
             AccountMeta.new(source, False),
@@ -99,8 +109,10 @@ def transfer(
     )
 
 
-def set_authority(account: PublicKey, current_authority: PublicKey, authority_type: AuthorityType,
-                  token_program: PublicKey, new_authority: Optional[PublicKey] = None) -> Instruction:
+def set_authority(
+    account: PublicKey, current_authority: PublicKey, authority_type: AuthorityType,
+    new_authority: Optional[PublicKey] = None
+) -> Instruction:
     data = bytearray([Command.SET_AUTHORITY, authority_type])
     if not new_authority:
         data.append(0)
@@ -109,11 +121,23 @@ def set_authority(account: PublicKey, current_authority: PublicKey, authority_ty
         data.extend(new_authority.raw)
 
     return Instruction(
-        token_program,
+        PROGRAM_KEY,
         data,
         [
             AccountMeta.new(account, False),
             AccountMeta.new_read_only(current_authority, True),
+        ]
+    )
+
+
+def close_account(account: PublicKey, dest: PublicKey, owner: PublicKey) -> Instruction:
+    return Instruction(
+        PROGRAM_KEY,
+        bytes([Command.CLOSE_ACCOUNT]),
+        [
+            AccountMeta.new(account, False),
+            AccountMeta.new(dest, False),
+            AccountMeta.new_read_only(owner, True),
         ]
     )
 
@@ -124,13 +148,13 @@ class DecompiledInitializeAccount(NamedTuple):
     owner: PublicKey
 
 
-def decompile_initialize_account(m: Message, index: int, token_program: PublicKey) -> DecompiledInitializeAccount:
+def decompile_initialize_account(m: Message, index: int) -> DecompiledInitializeAccount:
     if index >= len(m.instructions):
         raise ValueError(f"instruction doesn't exist at {index}")
 
     i = m.instructions[index]
 
-    if m.accounts[i.program_index] != token_program:
+    if m.accounts[i.program_index] != PROGRAM_KEY:
         raise ValueError('incorrect program')
 
     if len(i.accounts) != 4:
@@ -156,15 +180,14 @@ class DecompiledTransfer(NamedTuple):
     amount: int
 
 
-def decompile_transfer(m: Message, index: int, token_program: Optional[PublicKey] = None) -> DecompiledTransfer:
+def decompile_transfer(m: Message, index: int) -> DecompiledTransfer:
     if index >= len(m.instructions):
         raise ValueError(f"instruction doesn't exist at {index}")
 
     i = m.instructions[index]
 
-    if token_program:
-        if m.accounts[i.program_index] != token_program:
-            raise ValueError('incorrect program')
+    if m.accounts[i.program_index] != PROGRAM_KEY:
+        raise ValueError('incorrect program')
 
     if len(i.accounts) != 3:
         raise ValueError(f'invalid number of accounts: {len(i.accounts)}')
@@ -190,13 +213,13 @@ class DecompileSetAuthority(NamedTuple):
     new_authority: Optional[PublicKey]
 
 
-def decompile_set_authority(m: Message, index: int, token_program: PublicKey) -> DecompileSetAuthority:
+def decompile_set_authority(m: Message, index: int) -> DecompileSetAuthority:
     if index >= len(m.instructions):
         raise ValueError(f"instruction doesn't exist at {index}")
 
     i = m.instructions[index]
 
-    if m.accounts[i.program_index] != token_program:
+    if m.accounts[i.program_index] != PROGRAM_KEY:
         raise ValueError('incorrect program')
 
     if len(i.accounts) != 2:
@@ -219,4 +242,33 @@ def decompile_set_authority(m: Message, index: int, token_program: PublicKey) ->
         m.accounts[i.accounts[1]],
         AuthorityType(i.data[1]),
         PublicKey(i.data[3:]) if i.data[2] == 1 else None,
+    )
+
+
+class DecompileCloseAccount(NamedTuple):
+    account: PublicKey
+    destination: PublicKey
+    owner: PublicKey
+
+
+def decompile_close_account(m: Message, index: int) -> DecompileCloseAccount:
+    if index >= len(m.instructions):
+        raise ValueError(f"instruction doesn't exist at {index}")
+
+    i = m.instructions[index]
+
+    if m.accounts[i.program_index] != PROGRAM_KEY:
+        raise ValueError('incorrect program')
+
+    if len(i.data) != 1 or i.data[0] != Command.CLOSE_ACCOUNT:
+        raise ValueError(f'invalid instruction data: {i.data}')
+
+    # note: we do < 3 instead of != 3 in order to support multisig cases.
+    if len(i.accounts) < 3:
+        raise ValueError(f'invalid number of accounts: {len(i.accounts)}')
+
+    return DecompileCloseAccount(
+        m.accounts[i.accounts[0]],
+        m.accounts[i.accounts[1]],
+        m.accounts[i.accounts[2]],
     )
