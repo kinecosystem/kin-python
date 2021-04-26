@@ -37,44 +37,35 @@ from agora.client import Client, Environment
 client = Client(Environment.TEST, app_index=1)
 ```
 
-Additional options include:
-- `whitelist_key`: The private key of an account that will be used to co-sign all transactions. Should only be set for Kin 3.
-- `grpc_channel`: A specific `grpc.Channel` to use. Cannot be set if `endpoint` is set.
-- `endpoint`: A specific endpoint to use in the client. Cannot be set if `grpc_channel` is set.
-- `retry_config`: A custom `agora.client.RetryConfig` to configure how the client retries requests.
-- `kin_version`: The version of Kin to use. Defaults to 3.
-- `default_commitment`: (Kin 4 only) The commitment requirement to use by default for Kin 4 Agora requests. See the [website documentation](https://docs.kin.org/solana#commitment) for more information.
-
 ### Usage
+
+The following outlines some example usages of the client. See the [documentation](https://docs.kin.org/python/api) for more details.
+ 
 #### Create an Account
 The `create_account` method creates an account with the provided private key.
 
-To create a new account, first generate a new private key:
+To create a new account, first generate a new private key, then submit it using `create_account`:
 ```python
+from agora.client import Client, Environment
 from agora.keys import PrivateKey
 
-private_key = PrivateKey.random()
-```
+client = Client(Environment.TEST, app_index=1)
 
-Next, submit it using `create_account`:
-```python
+private_key = PrivateKey.random()
 client.create_account(private_key)
 ```
-
-In addition to the mandatory `private_key` parameter, `create_account` has the following optional parameters:
-- `commitment`: (Kin 4 only) Indicates to Solana which bank state to query. See the [website documentation](https://docs.kin.org/solana#commitment) for more details. 
-- `subsidizer`: (Kin 4 only) The private key of an account to use as the funder of the transaction instead of the subsidizer configured on Agora.
 
 #### Get a Transaction
 The `get_transaction` method gets transaction data by transaction id.
 ```python
+from agora.client import Client, Environment
+
+client = Client(Environment.TEST, app_index=1)
+
 # tx_id is either a 32-byte Stellar transaction hash or a 64-byte Solana transaction signature 
 tx_id = b'<txid>'
 transaction_data = client.get_transaction(tx_id)
 ```
-
-In addition to the mandatory `tx_id` parameter, `get_transaction` has the following optional parameters:
-- `commitment`: (Kin 4 only) Indicates to Solana which bank state to query. See the [website documentation](https://docs.kin.org/solana#commitment) for more details. 
 
 #### Get an Account Balance
 The `get_balance` method gets the balance of the provided account, in [quarks](https://docs.kin.org/terms-and-concepts#quark).
@@ -87,14 +78,12 @@ public_key = PrivateKey.random().public_key
 balance = client.get_balance(public_key)
 ``` 
 
-In addition to the mandatory `public_key` parameter, `get_balance` has the following optional parameters:
-- `commitment`: (Kin 4 only) Indicates to Solana which bank state to query. See the [website documentation](https://docs.kin.org/solana#commitment) for more details. 
-
 #### Submit a Payment
 The `submit_payment` method submits the provided payment to Agora.
 ```python
 from agora.client import Client, Environment
-from agora.model import Payment, TransactionType, PrivateKey, PublicKey
+from agora.keys import PrivateKey, PublicKey
+from agora.model import Payment, TransactionType
 from agora.utils import kin_to_quarks
 
 client = Client(Environment.TEST, app_index=1)
@@ -105,29 +94,13 @@ payment = Payment(sender, dest, TransactionType.EARN, kin_to_quarks("1"))
 tx_hash = client.submit_payment(payment)
 ```
 
-A `Payment` has the following required properties:
-- `sender`: The private key of the account from which the payment will be sent.
-- `destination`: The public key of the account to which the payment will be sent.
-- `tx_type`: The transaction type of the payment.
-- `quarks`: The amount of the payment, in [quarks](https://docs.kin.org/terms-and-concepts#quark).
-
-Additionally, it has some optional properties:
-- `channel`: (Kin 2 and Kin 3 only) The private key of a [channel](https://docs.kin.org/how-it-works#channels) account to use as the source of the transaction. If unset, `sender` will be used as the transaction source.
-- `invoice`: An [Invoice](https://docs.kin.org/how-it-works#invoices) to associate with this payment. Cannot be set if `memo` is set.
-- `memo` A text memo to include in the transaction. Cannot be set if `invoice` is set.
-- `subsidizer`: (Kin 4 only) The private key of an account to use as the funder of the transaction instead of the subsidizer configured on Agora.
-
-`submit_payment` also has the following optional properties:
-- `commitment`: (Kin 4 only) Indicates to Solana which bank state to query. See the [website documentation](https://docs.kin.org/solana#commitment) for more details.
-- `sender_resolution`: (Kin 4 only) Indicates which type of account resolution to use for the payment sender.
-- `dest_resolution`: (Kin 4 only) Indicates which type of account resolution to use for the payment destination.
-
 #### Submit an Earn Batch
 The `submit_earn_batch` method submits a batch of earns to Agora from a single account. It batches the earns into fewer 
 transactions where possible and submits as many transactions as necessary to submit all the earns.
 ```python
 from agora.client import Client, Environment
-from agora.model import Earn, PrivateKey, PublicKey
+from agora.keys import PublicKey, PrivateKey
+from agora.model import Earn, EarnBatch
 from agora.utils import kin_to_quarks
 
 client = Client(Environment.TEST, app_index=1)
@@ -141,23 +114,10 @@ earns = [
     Earn(dest2, 100000),  # also equivalent to 1 Kin
     ...
 ]
+batch = EarnBatch(sender, earns)
 
-batch_earn_result = client.submit_earn_batch(sender, earns)
+batch_earn_result = client.submit_earn_batch(batch)
 ```
-
-A single `Earn` has the following properties:
-- `destination`: The public key of the account to which the earn will be sent.
-- `quarks`: The amount of the earn, in [quarks](https://docs.kin.org/terms-and-concepts#quark).
-- `invoice`: (optional) An [Invoice](https://docs.kin.org/how-it-works#invoices) to associate with this earn.
-
-The `submit_earn_batch` method has the following parameters:
-- `sender`:  The private key of the account from which the earns will be sent.
-- `earns`: The list of earns to send.
-- `channel`: (optional, Kin 2 and Kin 3 only) The private key of a [channel](https://docs.kin.org/how-it-works#channels) account to use as the transaction source. If not set, `sender` will be used as the source.
-- `memo`: (optional) A text memo to include in the transaction. Cannot be used if the earns have invoices associated with them.
-- `commitment`: (Kin 4 only) Indicates to Solana which bank state to query. See the [website documentation](https://docs.kin.org/solana#commitment) for more details.
-- `sender_resolution`: (Kin 4 only) Indicates which type of account resolution to use for the payment sender.
-- `dest_resolution`: (Kin 4 only) Indicates which type of account resolution to use for the payment destination.
 
 ### Examples
 A few examples for creating an account and different ways of submitting payments and batched earns can be found in `examples/client`.
@@ -221,11 +181,6 @@ def events_endpoint_func(request):
     # respond using provided status_code and request_body  
 ```
 
-`WebhookHandler.handle_events` takes in the following mandatory parameters:
-- `f`: A function that accepts a list of Events. Any return value will be ignored.
-- `signature`: The base64-encoded signature included as the `X-Agora-HMAC-SHA256` header in the HTTP request (see the [Agora Webhook Reference](https://docs.kin.org/agora/webhook) for more details).
-- `req_body`: The string request body.
-
 #### Sign Transaction Webhook 
 The sign transaction webhook is used to sign Kin 3 transactions with a whitelisted Kin 3 account to remove fees. On Kin 4, the webhook can be used to simply approve or reject transactions submitted by mobile clients. 
 
@@ -260,11 +215,6 @@ def sign_tx_endpoint_func(request):
     
     # respond using provided status_code and request_body  
 ```
-
-`WebhookHandler.handle_sign_transaction` takes in the following mandatory parameters:
-- `f`: A function that takes in a SignTransactionRequest and a SignTransactionResponse. Any return value will be ignored.
-- `signature`: The base64-encoded signature included as the `X-Agora-HMAC-SHA256` header in the HTTP request (see the [Agora Webhook Reference](https://docs.kin.org/agora/webhook) for more details).
-- `req_body`: The string request body.
 
 ### Example Code
 A simple example Flask server implementing both the Events and Sign Transaction webhooks can be found in `examples/webhook/app.py`. To run it, first install all required dependencies (it is recommended that you use a virtual environment):

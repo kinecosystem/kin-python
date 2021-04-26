@@ -1,11 +1,7 @@
-from typing import Optional, List
+from typing import Optional
 
-from agoraapi.common.v3 import model_pb2
-
-from agora import solana
 from agora.keys import PrivateKey, PublicKey
 from agora.model.invoice import Invoice
-from agora.model.memo import AgoraMemo
 from agora.model.transaction_type import TransactionType
 
 
@@ -20,7 +16,10 @@ class Payment:
         one of invoice or memo should be set.
     :param memo: (optional) The text memo to include with the transaction. Only one of invoice or memo should be set.
     :param subsidizer: (optional) The subsidizer to use for the create account transaction. The subsidizer will be
-            used both as the payer of the transaction. Only applicable for Kin 4 transactions.
+            used as the payer of the transaction.
+    :param dedupe_id: (optional) The dedupe ID to use for the transaction submission. If included, Agora will verify
+        that no transaction was previously submitted the same dedupe ID before submitting the transaction to the
+        blockchain.
     """
 
     def __init__(
@@ -56,8 +55,8 @@ class Payment:
     def __repr__(self):
         return f'{self.__class__.__name__}(' \
                f'sender={self.sender!r}, destination={self.destination!r}, tx_type={self.tx_type!r}, ' \
-               f'quarks={self.quarks}, invoice={self.invoice!r}, memo={self.memo!r}), ' \
-               f'subsidizer={self.subsidizer!r}, dedupe_id={self.dedupe_id}'
+               f'quarks={self.quarks}, invoice={self.invoice!r}, memo={self.memo!r}, ' \
+               f'subsidizer={self.subsidizer!r}, dedupe_id={self.dedupe_id})'
 
 
 class ReadOnlyPayment:
@@ -99,50 +98,3 @@ class ReadOnlyPayment:
         return f'{self.__class__.__name__}(' \
                f'sender={self.sender!r}, destination={self.destination!r}, tx_type={self.tx_type!r}, ' \
                f'quarks={self.quarks}, invoice={self.invoice!r}, memo={self.memo!r})'
-
-    @classmethod
-    def payments_from_transaction(
-        cls, tx: solana.Transaction, invoice_list: Optional[model_pb2.InvoiceList] = None
-    ) -> List['ReadOnlyPayment']:
-        """Returns a list of read only payments from a Solana transaction.
-
-        :param tx: The transaction.
-        :param invoice_list: (optional) A protobuf invoice list associated with the transaction.
-        :return: A List of :class:`ReadOnlyPayment <ReadOnlyPayment>` objects.
-        """
-        text_memo = None
-        agora_memo = None
-        start_index = 0
-        program_idx = tx.message.instructions[0].program_index
-        if tx.message.accounts[program_idx] == solana.MEMO_PROGRAM_KEY:
-            decompiled_memo = solana.decompile_memo(tx.message, 0)
-            start_index = 1
-            memo_data = decompiled_memo.data.decode('utf-8')
-            try:
-                agora_memo = AgoraMemo.from_b64_string(memo_data)
-            except ValueError:
-                text_memo = memo_data
-
-        transfer_count = len(tx.message.instructions) - start_index
-        if invoice_list and invoice_list.invoices and len(invoice_list.invoices) != transfer_count:
-            raise ValueError(f'number of invoices ({len(invoice_list.invoices)}) does not match number of non-memo '
-                             f'transaction instructions ({transfer_count})')
-
-        payments = []
-        for idx, op in enumerate(tx.message.instructions[start_index:]):
-            try:
-                decompiled_transfer = solana.decompile_transfer(tx.message, idx + start_index)
-            except ValueError as e:
-                continue
-
-            inv = invoice_list.invoices[idx] if invoice_list and invoice_list.invoices else None
-            payments.append(ReadOnlyPayment(
-                sender=decompiled_transfer.source,
-                destination=decompiled_transfer.dest,
-                tx_type=agora_memo.tx_type() if agora_memo else TransactionType.UNKNOWN,
-                quarks=decompiled_transfer.amount,
-                invoice=Invoice.from_proto(inv) if inv else None,
-                memo=text_memo if text_memo else None,
-            ))
-
-        return payments

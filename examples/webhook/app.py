@@ -96,9 +96,6 @@ def _sign_transaction(req: SignTransactionRequest, resp: SignTransactionResponse
     #
     # Backends may keep track of the transaction themselves using SignTransactionRequest.get_tx_hash() and rely on
     # either the Events webhook or polling to get the transaction status.
-    #
-    # Note: Calling `sign` on a Kin 4 transaction is currently a no-op, but sign functionality for Solana transactions
-    # will be added at a later date.
     resp.sign(webhook_private_key)
     return
 

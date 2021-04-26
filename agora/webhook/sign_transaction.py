@@ -6,7 +6,7 @@ from agoraapi.common.v3 import model_pb2
 from agora import solana
 from agora.error import InvoiceErrorReason, OperationInvoiceError
 from agora.keys import PrivateKey
-from agora.model import InvoiceList, ReadOnlyPayment
+from agora.model import InvoiceList, ReadOnlyPayment, parse_transaction, Creation
 
 
 class SignTransactionRequest:
@@ -18,8 +18,9 @@ class SignTransactionRequest:
     """
 
     def __init__(
-        self, payments: List[ReadOnlyPayment], transaction: [solana.Transaction],
+        self, creations: List[Creation], payments: List[ReadOnlyPayment], transaction: solana.Transaction,
     ):
+        self.creations = creations
         self.payments = payments
         self.transaction = transaction
 
@@ -38,7 +39,8 @@ class SignTransactionRequest:
             raise ValueError('`solana_transaction` is required on Kin 4 transactions')
 
         tx = solana.Transaction.unmarshal(base64.b64decode(tx_string))
-        return cls(ReadOnlyPayment.payments_from_transaction(tx, il), tx)
+        creations, payments = parse_transaction(tx, il)
+        return cls(creations, payments, tx)
 
     def get_tx_id(self) -> Optional[bytes]:
         """Returns the transaction id of the transaction in the sign transaction request, if available. The id is
@@ -53,17 +55,22 @@ class SignTransactionResponse:
     """A response to a sign transaction request received from Agora.
     """
 
-    def __init__(self):
+    def __init__(self, transaction: solana.Transaction):
         self.invoice_errors = []
         self.rejected = False
+        self.transaction = transaction
 
     def sign(self, private_key: PrivateKey):
         """Signs the transaction envelope with the provided account private key. No-op on Kin 4 transactions.
 
         :param private_key: The account :class:`PrivateKey <agora.keys.PrivateKey>`
         """
-        # TODO: add solana transaction signing for subsidization
-        pass
+        if len(self.transaction.signatures) > len(self.transaction.message.accounts):
+            raise ValueError('invalid transaction: more signers than accounts')
+
+        # check to see if our public key corresponds to a signer
+        if private_key.public_key == self.transaction.message.accounts[0]:
+            self.transaction.sign([private_key])
 
     def reject(self):
         """Marks that the sign transaction request is rejected.
@@ -79,13 +86,3 @@ class SignTransactionResponse:
         """
         self.rejected = True
         self.invoice_errors.append(OperationInvoiceError(idx, reason))
-
-    def to_json(self):
-        if self.rejected:
-            resp = {}
-            if self.invoice_errors:
-                resp['invoice_errors'] = [e.to_json() for e in self.invoice_errors]
-            return resp
-
-        resp = {}
-        return resp

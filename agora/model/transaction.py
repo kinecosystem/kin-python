@@ -96,7 +96,7 @@ class TransactionData:
                     tx_type = agora_memo.tx_type()
                 except ValueError:
                     memo = memo_data
-            tx_errors = TransactionErrors.from_solana_tx(solana_tx, item.transaction_error)
+            tx_errors = TransactionErrors.from_solana_tx(solana_tx, item.transaction_error, item.transaction_id.value)
         elif item.stellar_transaction.envelope_xdr:
             env = te.TransactionEnvelope.from_xdr(base64.b64encode(item.stellar_transaction.envelope_xdr))
             tx = env.tx
@@ -109,7 +109,7 @@ class TransactionData:
             elif isinstance(tx.memo, stellar_memo.TextMemo):
                 memo = tx.memo.text.decode()
 
-            tx_errors = TransactionErrors.from_stellar_tx(env, item.transaction_error)
+            tx_errors = TransactionErrors.from_stellar_tx(env, item.transaction_error, item.transaction_id.value)
 
         for idx, p in enumerate(item.payments):
             inv = il.invoices[idx] if il and il.invoices else None

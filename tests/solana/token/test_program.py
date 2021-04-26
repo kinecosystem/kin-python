@@ -10,7 +10,7 @@ class TestTokenProgram:
         instruction = initialize_account(public_keys[0], public_keys[1], public_keys[2])
 
         assert instruction.data == bytes([Command.INITIALIZE_ACCOUNT])
-        assert instruction.accounts[0].is_signer
+        assert not instruction.accounts[0].is_signer
         assert instruction.accounts[0].is_writable
         for i in range(1, 4):
             assert not instruction.accounts[i].is_signer

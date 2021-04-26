@@ -15,7 +15,9 @@ class PublicKey:
     """
 
     def __init__(self, public_key: bytes):
-        self._verify_key = signing.VerifyKey(public_key)
+        # Passing in a bytearray for public_key passes the type annotation checker, but fails an isinstance check
+        # inside verify key, so we cast to bytes just in case.
+        self._verify_key = signing.VerifyKey(bytes(public_key))
 
     def __eq__(self, other):
         if not isinstance(other, PublicKey):

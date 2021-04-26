@@ -49,8 +49,10 @@ class TestTransactionError:
         ]
     )
     def test_error_from_proto(self, reason, exception_type):
-        e = error_from_proto(model_pbv4.TransactionError(reason=reason))
+        tx_id = b'tx_sig'
+        e = error_from_proto(model_pbv4.TransactionError(reason=reason), tx_id)
         assert isinstance(e, exception_type)
+        assert e.tx_id == tx_id
 
     @pytest.mark.parametrize(
         "reason, exception_type",
@@ -78,15 +80,16 @@ class TestTransactionError:
             keys[0],
             [
                 memo.memo_instruction('data'),
-                token.transfer(keys[1], keys[2], keys[1], 100, keys[3]),
-                token.set_authority(keys[1], keys[1], token.AuthorityType.CloseAccount, keys[3], keys[2])
+                token.transfer(keys[1], keys[2], keys[1], 100),
+                token.set_authority(keys[1], keys[1], token.AuthorityType.CLOSE_ACCOUNT, keys[3])
             ]
         )
+        tx_id = b'tx_sig'
 
         errors = TransactionErrors.from_solana_tx(tx, model_pbv4.TransactionError(
             reason=model_pbv4.TransactionError.Reason.INSUFFICIENT_FUNDS,
             instruction_index=instruction_index,
-        ))
+        ), tx_id)
         assert isinstance(errors.tx_error, InsufficientBalanceError)
         assert len(errors.op_errors) == 3
         for i in range(0, len(errors.op_errors)):
@@ -129,7 +132,7 @@ class TestTransactionError:
         errors = TransactionErrors.from_stellar_tx(env, model_pbv4.TransactionError(
             reason=model_pbv4.TransactionError.Reason.INSUFFICIENT_FUNDS,
             instruction_index=instruction_index,
-        ))
+        ), b'tx_hash')
         assert isinstance(errors.tx_error, InsufficientBalanceError)
         assert len(errors.op_errors) == 4
         for i in range(0, len(errors.op_errors)):

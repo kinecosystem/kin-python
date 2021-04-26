@@ -13,11 +13,20 @@ class Error(Exception):
     """Base error for Agora SDK errors.
     """
 
-    def __repr__(self):
-        return f'{self.__class__.__name__}({", ".join([f"{k}={v}" for k, v in self.__dict__.items()])})'
+    def __init__(self, message: Optional[str] = ''):
+        self.message = message
+        super().__init__(self.message)
 
-    def __str__(self):
-        return repr(self)
+
+class TransactionError(Error):
+    """Base error for transaction submission errors.
+
+    :param tx_id: The id of the transaction, if available.
+    """
+
+    def __init__(self, message: Optional[str] = '', tx_id: Optional[bytes] = None):
+        super().__init__(message)
+        self.tx_id = tx_id
 
 
 class UnsupportedVersionError(Error):
@@ -35,50 +44,40 @@ class AccountExistsError(Error):
     """
 
 
-class AccountNotFoundError(Error):
-    """Raised when an account could not be found.
-    """
-
-
-class SenderDoesNotExistError(Error):
-    """Raised when the source account of a transaction does not exist.
-    """
-
-
-class DestinationDoesNotExistError(Error):
-    """Raised when the destination account of a transaction does not exis.
-    """
-
-
-class TransactionMalformedError(Error):
-    """Raised when the provided transaction was malformed in some way.
-    """
-
-
 class TransactionNotFoundError(Error):
     """Raised when no transaction data for a specified transaction could be found.
     """
 
 
-class InvalidSignatureError(Error):
+class AccountNotFoundError(TransactionError):
+    """Raised when an account could not be found.
+    """
+
+
+class InvalidSignatureError(TransactionError):
     """Raised when the submitted transaction is either missing signatures or
     contains unused ones.
     """
 
 
-class InsufficientBalanceError(Error):
+class InsufficientBalanceError(TransactionError):
     """Raised when an account has an insufficient balance for a submitted
     transaction.
     """
 
 
-class InsufficientFeeError(Error):
-    """Raised when the provided fee for a transaction was insufficient.
-    """
-
-
-class BadNonceError(Error):
+class BadNonceError(TransactionError):
     """Raised when a transaction contains an invalid nonce."""
+
+
+class AlreadySubmittedError(TransactionError):
+    """Indicates that the transaction was already submitted.
+
+    If the client is retrying a submission due to a transient failure, then this can occur if the submission in a
+    previous attempt was successful. Otherwise, it may indicate that the transaction is indistinguishable from a
+    previous transaction (i.e. same block hash, sender, dest, and amount), and the client should use a different recent
+    blockhash and try again.
+    """
 
 
 class WebhookRequestError(Error):
@@ -178,16 +177,6 @@ class NoSubsidizerError(Error):
     Agora service and none was provided by the method caller."""
 
 
-class AlreadySubmittedError(Error):
-    """Indicates that the transaction was already submitted.
-
-    If the client is retrying a submission due to a transient failure, then this can occur if the submission in a
-    previous attempt was successful. Otherwise, it may indicate that the transaction is indistinguishable from a
-    previous transaction (i.e. same block hash, sender, dest, and amount), and the client should use a different recent
-    blockhash and try again.
-    """
-
-
 class NoTokenAccountsError(Error):
     """Indicates that no token accounts were resolved for the requested account ID.
     """
@@ -211,22 +200,10 @@ class TransactionErrors:
         self.payment_errors = payment_errors if payment_errors else []
 
     @staticmethod
-    def from_proto_error(tx_error: model_pb_v4.TransactionError) -> Optional['TransactionErrors']:
-        if tx_error.reason == model_pb_v4.TransactionError.NONE:
-            return None
-        if tx_error.reason == model_pb_v4.TransactionError.UNAUTHORIZED:
-            return TransactionErrors(tx_error=InvalidSignatureError('missing signature'))
-        if tx_error.reason == model_pb_v4.TransactionError.BAD_NONCE:
-            return TransactionErrors(tx_error=BadNonceError())
-        if tx_error.reason == model_pb_v4.TransactionError.INSUFFICIENT_FUNDS:
-            return TransactionErrors(tx_error=InsufficientBalanceError())
-        if tx_error.reason == model_pb_v4.TransactionError.INVALID_ACCOUNT:
-            return TransactionErrors(tx_error=AccountNotFoundError())
-        return TransactionErrors(tx_error=Error(f'unknown error: {tx_error}'))
-
-    @staticmethod
-    def from_solana_tx(tx: solana.Transaction, tx_error: model_pb_v4.TransactionError) -> Optional['TransactionErrors']:
-        err = error_from_proto(tx_error)
+    def from_solana_tx(
+        tx: solana.Transaction, tx_error: model_pb_v4.TransactionError, tx_id: bytes
+    ) -> Optional['TransactionErrors']:
+        err = error_from_proto(tx_error, tx_id)
         if not err:
             return None
 
@@ -255,9 +232,9 @@ class TransactionErrors:
         return errors
 
     @staticmethod
-    def from_stellar_tx(env: te.TransactionEnvelope, tx_error: model_pb_v4.TransactionError) -> Optional[
+    def from_stellar_tx(env: te.TransactionEnvelope, tx_error: model_pb_v4.TransactionError, tx_id: bytes) -> Optional[
         'TransactionErrors']:
-        err = error_from_proto(tx_error)
+        err = error_from_proto(tx_error, tx_id)
         if not err:
             return None
 
@@ -284,17 +261,17 @@ class TransactionErrors:
         return errors
 
 
-def error_from_proto(tx_error: model_pb_v4.TransactionError) -> Optional[Error]:
+def error_from_proto(tx_error: model_pb_v4.TransactionError, tx_id: bytes) -> Optional[Error]:
     if tx_error.reason == model_pb_v4.TransactionError.NONE:
         return None
     if tx_error.reason == model_pb_v4.TransactionError.UNAUTHORIZED:
-        return InvalidSignatureError()
+        return InvalidSignatureError(tx_id=tx_id)
     if tx_error.reason == model_pb_v4.TransactionError.BAD_NONCE:
-        return BadNonceError()
+        return BadNonceError(tx_id=tx_id)
     if tx_error.reason == model_pb_v4.TransactionError.INSUFFICIENT_FUNDS:
-        return InsufficientBalanceError()
+        return InsufficientBalanceError(tx_id=tx_id)
     if tx_error.reason == model_pb_v4.TransactionError.INVALID_ACCOUNT:
-        return AccountNotFoundError()
+        return AccountNotFoundError(tx_id=tx_id)
     return Error(f'unknown tx error reason: {tx_error.reason}')
 
 

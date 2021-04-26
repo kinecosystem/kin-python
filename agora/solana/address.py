@@ -1,7 +1,7 @@
 import hashlib
 from typing import List, Optional
 
-from nacl.bindings.crypto_core import crypto_core_ed25519_is_valid_point
+from pure25519.basic import decodepoint, NotOnCurve
 
 from agora.keys import PublicKey
 
@@ -45,11 +45,13 @@ def create_program_address(program: PublicKey, seeds: List[bytes]) -> PublicKey:
     h = sha256.digest()
     pub = h[:32]
 
-    # Following the Solana SDK, we want to _reject the generated public key if it's a a valid point on the ed25519 curve
-    if crypto_core_ed25519_is_valid_point(pub):
-        raise InvalidPublicKeyError()
+    # Following the Solana SDK, we want to _reject_ the generated public key if it's a a valid point on the ed25519 curve
+    try:
+        decodepoint(pub)
+    except NotOnCurve:
+        return PublicKey(pub)
 
-    return PublicKey(pub)
+    raise InvalidPublicKeyError()
 
 
 def find_program_address(program: PublicKey, seeds: List[bytes]) -> Optional[PublicKey]:

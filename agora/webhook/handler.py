@@ -5,10 +5,12 @@ import json
 from json import JSONDecodeError
 from typing import Tuple, Callable, List, Optional
 
+from agora import solana
 from agora.client import Environment
 from agora.error import WebhookRequestError
-from agora.webhook.events import Event
-from agora.webhook.sign_transaction import SignTransactionRequest, SignTransactionResponse
+from .create_account import CreateAccountRequest, CreateAccountResponse
+from .events import Event
+from .sign_transaction import SignTransactionRequest, SignTransactionResponse
 
 AGORA_HMAC_HEADER = 'X-Agora-HMAC-SHA256'
 APP_USER_ID_HEADER = "X-App-User-ID"
@@ -67,13 +69,53 @@ class WebhookHandler:
 
         return 200, ''
 
+    def handle_create_account(
+        self, f: Callable[[CreateAccountRequest, CreateAccountResponse], None], signature: str, req_body: str
+    ) -> Tuple[int, str]:
+        """A hook for handling a create account request from Agora.
+
+        :param f: A function to call with the recieved request. Implementations can raise
+            :exc:`WebhookRequestError <agora.error.WebhookRequestError>` to return a specific HTTP status code and body.
+        :param signature: The Agora HMAC signature included in the request headers.
+        :param req_body: The request body.
+        :return: A Tuple of the status code (int) and the request body (str)
+        """
+        if self.secret and not self.is_valid_signature(req_body, signature):
+            return 401, ''
+
+        try:
+            json_req_body = json.loads(req_body)
+        except JSONDecodeError:
+            return 400, 'invalid json request body'
+
+        try:
+            req = CreateAccountRequest.from_json(json_req_body)
+        except ValueError as e:
+            return 400, str(e)
+
+        resp = CreateAccountResponse(req.transaction)
+        try:
+            f(req, resp)
+        except WebhookRequestError as e:
+            return e.status_code, e.response_body
+        except Exception as e:
+            return 500, str(e)
+
+        if resp.rejected:
+            return 403, '{}'
+
+        sig = resp.transaction.get_signature()
+        if sig != bytes(solana.transaction.SIGNATURE_LENGTH):
+            return 200, json.dumps({'signature': base64.b64encode(sig).decode('utf-8')})
+
+        return 200, json.dumps({})
+
     def handle_sign_transaction(
         self, f: Callable[[SignTransactionRequest, SignTransactionResponse], None], signature: str, req_body: str
     ) -> Tuple[int, str]:
         """A hook for handling a sign transaction request from Agora.
 
-        :param f: A function to call with the received event. Implementations can raise
-            :exc:`InvoiceError <agora.error.InvoiceError>` to return a 403 response with invoice error details or
+        :param f: A function to call with the received request. Implementations can raise
             :exc:`WebhookRequestError <agora.error.WebhookRequestError>` to return a specific HTTP status code and body.
         :param signature: The Agora HMAC signature included in the request headers.
         :param req_body: The request body.
@@ -86,14 +128,14 @@ class WebhookHandler:
         try:
             json_req_body = json.loads(req_body)
         except JSONDecodeError:
-            return 400, 'invalid request body'
+            return 400, 'invalid json request body'
 
         try:
             req = SignTransactionRequest.from_json(json_req_body)
-        except ValueError:
-            return 400, 'invalid sign transaction request'
+        except ValueError as e:
+            return 400, str(e)
 
-        resp = SignTransactionResponse()
+        resp = SignTransactionResponse(req.transaction)
         try:
             f(req, resp)
         except WebhookRequestError as e:
@@ -101,8 +143,14 @@ class WebhookHandler:
         except Exception as e:
             return 500, str(e)
 
-        data = resp.to_json()
         if resp.rejected:
+            data = {}
+            if resp.invoice_errors:
+                data['invoice_errors'] = [e.to_json() for e in resp.invoice_errors]
             return 403, json.dumps(data)
 
-        return 200, json.dumps(data)
+        sig = resp.transaction.get_signature()
+        if sig != bytes(solana.transaction.SIGNATURE_LENGTH):
+            return 200, json.dumps({'signature': base64.b64encode(sig).decode('utf-8')})
+
+        return 200, json.dumps({})

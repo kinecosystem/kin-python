@@ -39,7 +39,10 @@ class EarnBatch:
     :param memo: (optional) The memo to include in the transaction. If set, none of the invoices included in earns
         will be applied.
     :param subsidizer: (optional) The subsidizer to use for the create account transaction. The subsidizer will be
-            used both as the payer of the transaction. Only applicable for Kin 4 transactions.
+            used as the payer of the transaction.
+    :param dedupe_id: (optional) The dedupe ID to use for the transaction submission. If included, Agora will verify
+        that no transaction was previously submitted the same dedupe ID before submitting the transaction to the
+        blockchain.
 
     """
 

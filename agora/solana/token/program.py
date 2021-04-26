@@ -70,7 +70,7 @@ def initialize_account(account: PublicKey, mint: PublicKey, owner: PublicKey) ->
         PROGRAM_KEY,
         bytes([Command.INITIALIZE_ACCOUNT]),
         [
-            AccountMeta.new(account, True),
+            AccountMeta.new(account, False),
             AccountMeta.new_read_only(mint, False),
             AccountMeta.new_read_only(owner, False),
             AccountMeta.new_read_only(system.RENT_SYS_VAR, False),

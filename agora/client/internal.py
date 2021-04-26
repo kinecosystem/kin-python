@@ -11,7 +11,7 @@ from agora import solana
 from agora.cache.cache import LRUCache
 from agora.error import AccountExistsError, AccountNotFoundError, TransactionRejectedError, \
     TransactionErrors, Error, InsufficientBalanceError, PayerRequiredError, AlreadySubmittedError, \
-    BadNonceError
+    BadNonceError, TransactionError
 from agora.keys import PublicKey
 from agora.model import AccountInfo, TransactionData, TransactionState, InvoiceList
 from agora.retry import Strategy, retry
@@ -22,6 +22,12 @@ from agora.version import VERSION
 
 _GRPC_TIMEOUT_SECONDS = 10
 _SERVICE_CONFIG_CACHE_KEY = b'GetServiceConfig'
+
+
+class SignTransactionResult:
+    def __init__(self, tx_id: Optional[bytes] = None, invoice_errors: Optional[List[model_pb_v3.InvoiceError]] = None):
+        self.tx_id = tx_id
+        self.invoice_errors = invoice_errors if invoice_errors else []
 
 
 class SubmitTransactionResult:
@@ -114,9 +120,37 @@ class InternalClient:
             if resp.result == account_pb.GetAccountInfoResponse.Result.NOT_FOUND:
                 raise AccountNotFoundError
 
-            return AccountInfo.from_proto_v4(resp.account_info)
+            return AccountInfo.from_proto(resp.account_info)
 
         return retry(self._retry_strategies, _submit_request)
+
+    def resolve_token_accounts(self, public_key: PublicKey, include_account_info: bool) -> List[AccountInfo]:
+        """Resolves token accounts using Agora.
+
+        :param public_key: the public key of the account to resolve token accounts for.
+        :param include_account_info: indicates whether to include token account info in the response
+        :return: A list of :class:`AccountInfo <agora.model.account.AccountInfo>` objects each representing a token
+            account. Information other than AccountInfo.account_id will only be populated if `include_account_info` is
+            True.
+        """
+
+        def _resolve():
+            return self._account_stub_v4.ResolveTokenAccounts(account_pb.ResolveTokenAccountsRequest(
+                account_id=model_pb.SolanaAccountId(value=public_key.raw),
+                include_account_info=include_account_info,
+            ), metadata=self._metadata, timeout=_GRPC_TIMEOUT_SECONDS)
+
+        resp = retry(self._retry_strategies, _resolve)
+
+        # This is currently in place for backward compat with the server - `token_accounts` is deprecated
+        if resp.token_accounts and len(resp.token_account_infos) != len(resp.token_accounts):
+            # If we aren't requesting account info, we can interpolate the results ourselves.
+            if not include_account_info:
+                return [AccountInfo(PublicKey(a.value)) for a in resp.token_accounts]
+            else:
+                raise Error('server does not support resolving with account info')
+
+        return [AccountInfo.from_proto(a) for a in resp.token_account_infos]
 
     def get_transaction(
         self, tx_id: bytes, commitment: Optional[Commitment] = Commitment.SINGLE
@@ -142,6 +176,43 @@ class InternalClient:
             return TransactionData.from_proto(resp.item, resp.state)
 
         return TransactionData(tx_id, TransactionState.from_proto_v4(resp.state))
+
+    def sign_transaction(
+        self, tx: solana.Transaction, invoice_list: Optional[InvoiceList] = None
+    ) -> SignTransactionResult:
+        """ Submits a transaction
+
+        :param tx:
+        :param invoice_list:
+        :return: A :class:`SignTransactionResult <agora.client.internal.SignTransactionResult>` object.
+        """
+        tx_bytes = tx.marshal()
+
+        result = SignTransactionResult()
+
+        def _submit_request():
+            req = tx_pb.SignTransactionRequest(
+                transaction=model_pb.Transaction(
+                    value=tx_bytes,
+                ),
+                invoice_list=invoice_list.to_proto() if invoice_list else None,
+            )
+            resp = self._transaction_stub_v4.SignTransaction(req, metadata=self._metadata,
+                                                             timeout=_GRPC_TIMEOUT_SECONDS)
+
+            if resp.signature and len(resp.signature.value) == solana.SIGNATURE_LENGTH:
+                result.tx_id = resp.signature.value
+
+            if resp.result == tx_pb.SignTransactionResponse.Result.REJECTED:
+                raise TransactionRejectedError()
+            elif resp.result == tx_pb.SignTransactionResponse.Result.INVOICE_ERROR:
+                result.invoice_errors = resp.invoice_errors
+            elif resp.result != tx_pb.SignTransactionResponse.Result.OK:
+                raise TransactionError(f'unexpected result from agora: {resp.result}', tx_id=resp.signature.value)
+
+            return result
+
+        return retry(self._retry_strategies, _submit_request)
 
     def submit_solana_transaction(
         self, tx: solana.Transaction, invoice_list: Optional[InvoiceList] = None,
@@ -186,13 +257,13 @@ class InternalClient:
                 # in quick succession and we should raise the error to the caller. Otherwise, it's likely that the
                 # transaction completed successfully on a previous attempt that failed due to a transient error.
                 if attempt == 1:
-                    raise AlreadySubmittedError()
+                    raise AlreadySubmittedError(tx_id=resp.signature.value)
             elif resp.result == tx_pb.SubmitTransactionResponse.Result.FAILED:
-                result.errors = TransactionErrors.from_solana_tx(tx, resp.transaction_error)
+                result.errors = TransactionErrors.from_solana_tx(tx, resp.transaction_error, resp.signature.value)
             elif resp.result == tx_pb.SubmitTransactionResponse.Result.INVOICE_ERROR:
                 result.invoice_errors = resp.invoice_errors
             elif resp.result != tx_pb.SubmitTransactionResponse.Result.OK:
-                raise Error(f'unexpected result from agora: {resp.result}')
+                raise TransactionError(f'unexpected result from agora: {resp.result}', tx_id=resp.signature.value)
 
             return result
 
@@ -220,12 +291,12 @@ class InternalClient:
 
         return retry(self._retry_strategies, _submit_request)
 
-    def get_minimum_balance_for_rent_exception(self) -> tx_pb.GetMinimumBalanceForRentExemptionResponse:
+    def get_minimum_balance_for_rent_exception(self) -> int:
         def _submit_request():
             return self._transaction_stub_v4.GetMinimumBalanceForRentExemption(
                 tx_pb.GetMinimumBalanceForRentExemptionRequest(size=token.ACCOUNT_SIZE), metadata=self._metadata,
                 timeout=_GRPC_TIMEOUT_SECONDS
-            )
+            ).lamports
 
         return retry(self._retry_strategies, _submit_request)
 
@@ -252,12 +323,3 @@ class InternalClient:
             raise Error(f'unexpected response from airdrop service: {resp.result}')
 
         return retry(self._retry_strategies, _request_airdrop)
-
-    def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
-        def _resolve():
-            return self._account_stub_v4.ResolveTokenAccounts(account_pb.ResolveTokenAccountsRequest(
-                account_id=model_pb.SolanaAccountId(value=public_key.raw)
-            ))
-
-        resp = retry(self._retry_strategies, _resolve)
-        return [PublicKey(token_account.value) for token_account in resp.token_accounts]

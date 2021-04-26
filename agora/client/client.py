@@ -2,19 +2,15 @@ import base64
 from typing import List, Optional
 
 import grpc
-from agoraapi.account.v4 import account_service_pb2_grpc as account_pb_grpc
 from agoraapi.transaction.v4 import transaction_service_pb2 as tx_pb
 
 from agora import solana
 from agora.client.account.resolution import AccountResolution
-from agora.client.account.resolver import TokenAccountResolver
 from agora.client.environment import Environment
 from agora.client.internal import InternalClient, SubmitTransactionResult
-from agora.client.utils import _generate_token_account
-from agora.error import AccountExistsError, InvoiceError, TransactionMalformedError, SenderDoesNotExistError, \
-    InsufficientBalanceError, DestinationDoesNotExistError, InsufficientFeeError, BadNonceError, \
+from agora.error import AccountExistsError, InvoiceError, InsufficientBalanceError, BadNonceError, \
     TransactionRejectedError, Error, BlockchainVersionError, AccountNotFoundError, NoSubsidizerError, \
-    AlreadySubmittedError, invoice_error_from_proto, UnsupportedMethodError
+    AlreadySubmittedError, invoice_error_from_proto, UnsupportedMethodError, PayerRequiredError
 from agora.keys import PrivateKey, PublicKey
 from agora.model.earn import EarnBatch
 from agora.model.invoice import InvoiceList
@@ -25,7 +21,7 @@ from agora.model.transaction import TransactionData
 from agora.model.transaction_type import TransactionType
 from agora.retry import retry, LimitStrategy, BackoffWithJitterStrategy, BinaryExponentialBackoff, \
     NonRetriableErrorsStrategy, RetriableErrorsStrategy
-from agora.solana import Commitment, system, token, memo
+from agora.solana import Commitment, memo, system, token
 
 _MIN_VERSION = 4
 _MAX_VERSION = 4
@@ -38,11 +34,7 @@ _ENDPOINTS = {
 _NON_RETRIABLE_ERRORS = [
     AccountExistsError,
     AccountNotFoundError,
-    TransactionMalformedError,
-    SenderDoesNotExistError,
-    DestinationDoesNotExistError,
     InsufficientBalanceError,
-    InsufficientFeeError,
     TransactionRejectedError,
     InvoiceError,
     BadNonceError,
@@ -51,6 +43,8 @@ _NON_RETRIABLE_ERRORS = [
 ]
 
 _GRPC_TIMEOUT_SECONDS = 10
+
+_MAX_BATCH_SIZE = 15
 
 
 class RetryConfig:
@@ -86,10 +80,10 @@ class BaseClient:
         """Creates a new Kin account.
 
         :param private_key: The :class:`PrivateKey <agora.keys.PrivateKey>` of the account to create
-        :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
+        :param commitment: (optional) The commitment to use.
         :param subsidizer: (optional) The subsidizer to use for the create account transaction. The subsidizer will be
             used both as the payer of the transaction and will also be given the CloseAccount authority on the created
-            account. Only applicable for Kin 4 transactions.
+            account.
 
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
         :raise: :exc:`AccountExistsError <agora.error.AccountExistsError>`
@@ -101,7 +95,7 @@ class BaseClient:
 
         :param tx_id: The id of the transaction to retrieve. This can be either the 32-byte hash of a Stellar-based
             transaction (on Kin 2 or 3) or the 64-byte signature of a Solana-based transaction (on Kin 4).
-        :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
+        :param commitment: (optional) The commitment to use.
         :return: a :class:`TransactionData <agora.model.transaction.TransactionData>` object.
         """
         raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement get_transaction')
@@ -114,7 +108,7 @@ class BaseClient:
 
         :param public_key: The :class:`PublicKey <agora.keys.PublicKey>` of the account to retrieve the balance
             for.
-        :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
+        :param commitment: (optional) The commitment to use.
         :param account_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
             use if the original account was not found. Only applies for Kin 4. Defaults to AccountResolution.PREFERRED.
 
@@ -131,34 +125,51 @@ class BaseClient:
         :return: a List of token accounts owned by the account with the provided public key.
         """
 
+    def merge_token_accounts(
+        self, private_key: PrivateKey, create_associated_account: bool, commitment: Optional[Commitment] = None,
+        subsidizer: Optional[PrivateKey] = None
+    ) -> Optional[bytes]:
+        """Merges all of an account's token accounts into one.
+
+        :param private_key: The owner account for which to merge token accounts.
+        :param create_associated_account: Indicates whether or not to create the associated token account and use it as
+            the destination for all the merged token accounts.
+        :param subsidizer: (optional) The subsidizer to use for the merge account transaction. The subsidizer will be
+            used both as the payer of the transaction and will also be given the CloseAccount authority on the created
+            account.
+        :param commitment: (optional) The commitment to use.
+        :return: The id of the transaction, if one was submitted. If `None` gets returned, there was no transaction
+            submitted.
+        """
+        raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement merge_token_accounts')
+
     def submit_payment(
         self, payment: Payment, commitment: Optional[Commitment] = None,
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
+        sender_create: Optional[bool] = False
     ) -> bytes:
         """Submits a payment to the Kin blockchain.
 
         :param payment: The :class:`Payment <agora.model.payment.Payment>` to submit.
-        :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
+        :param commitment: (optional) The commitment to use.
         :param sender_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
-            use for the payment sender account if the transaction fails due to an account error. Only applies for Kin 4
-            transactions. Defaults to AccountResolution.PREFERRED.
+            use for the payment sender account if the transaction fails due to an account error. Defaults to
+            AccountResolution.PREFERRED.
         :param dest_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
-            use for the payment destination account if the transaction fails due to an account error. Only applies for
-            Kin 4 transactions. Defaults to AccountResolution.PREFERRED.
+            use for the payment destination account if the transaction fails due to an account error. Defaults to
+            AccountResolution.PREFERRED.
+        :param sender_create: (optional) Specifies whether or not destination token accounts should be created if they
+            do not exist.
 
         :raise: :exc:`UnsupportedVersionError <agora.error.UnsupportedVersionError>`
-        :raise: :exc:`TransactionMalformedError <agora.error.TransactionMalformedError>`
         :raise: :exc:`InvalidSignatureError <agora.error.InvalidSignatureError>`
         :raise: :exc:`InsufficientBalanceError <agora.error.InsufficientBalanceError>`
-        :raise: :exc:`InsufficientFeeError <agora.error.InsufficientFeeError>`
-        :raise: :exc:`SenderDoesNotExistError <agora.error.SenderDoesNotExistError>`
-        :raise: :exc:`DestinationDoesNotExistError <agora.error.DestinationDoesNotExistError>`
         :raise: :exc:`BadNonceError <agora.error.BadNonceError>`
         :raise: :exc:`TransactionError <agora.error.TransactionError>`
         :raise: :exc:`InvoiceError <agora.error.InvoiceError>`
 
-        :return: The hash of the transaction.
+        :return: The id of the transaction.
         """
         raise NotImplementedError('BaseClient is an abstract class. Subclasses must implement submit_payment')
 
@@ -172,7 +183,7 @@ class BaseClient:
         :param batch: The :class:`EarnBatch <agora.model.earn.EarnBatch>` to submit. The number of earns in the
             batch is limited to 15, which is roughly the max number of transfers that can fit inside a Solana
             transaction.
-        :param commitment: (optional) The commitment to use. Only applicable for Kin 4 transactions.
+        :param commitment: (optional) The commitment to use.
         :param sender_resolution: (optional) The :class:`AccountResolution <agora.client.account.AccountResolution>` to
             use for the sender account if the transaction fails due to an account error. Only applies for Kin 4
             transactions. Defaults to AccountResolution.PREFERRED.
@@ -215,7 +226,6 @@ class Client(BaseClient):
     :param env: The :class:`Environment <agora.environment.Environment>` to use.
     :param app_index: (optional) The Agora index of the app, used for all transactions and requests. Required to make
         use of invoices.
-    :param kin_version: (optional) The version of Kin to use. Defaults to using Kin 4.
     :param grpc_channel: (optional) A GRPC :class:`Channel <grpc.Channel>` object to use for Agora requests. Only one of
         grpc_channel or endpoint should be set.
     :param endpoint: (optional) An endpoint to use instead of the default Agora endpoints. Only one of grpc_channel or
@@ -261,25 +271,11 @@ class Client(BaseClient):
 
         self._default_commitment = default_commitment
 
-        self._token_account_resolver = TokenAccountResolver(
-            account_pb_grpc.AccountStub(self._grpc_channel),
-            retry_strategies=[
-                LimitStrategy(retry_config.max_retries + 1),
-                BackoffWithJitterStrategy(BinaryExponentialBackoff(retry_config.min_delay),
-                                          retry_config.max_delay, 0.1),
-            ]
-        )
-
     def create_account(self, private_key: PrivateKey, commitment: Optional[Commitment] = None,
                        subsidizer: Optional[PrivateKey] = None):
         commitment = commitment if commitment else self._default_commitment
-        min_balance_resp = self._internal_client.get_minimum_balance_for_rent_exception()
         return retry(self._nonce_retry_strategies, self._create_solana_account, private_key, commitment,
-                     min_balance_resp.lamports, subsidizer)
-
-    def get_transaction(self, tx_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
-        commitment = commitment if commitment else self._default_commitment
-        return self._internal_client.get_transaction(tx_id, commitment)
+                     subsidizer)
 
     def get_balance(
         self, public_key: PublicKey, commitment: Optional[Commitment] = None,
@@ -290,27 +286,113 @@ class Client(BaseClient):
             return self._internal_client.get_solana_account_info(public_key, commitment=commitment).balance
         except AccountNotFoundError as e:
             if account_resolution == AccountResolution.PREFERRED:
-                token_accounts = self._token_account_resolver.resolve_token_accounts(public_key)
-                if token_accounts:
-                    return self._internal_client.get_solana_account_info(token_accounts[0],
-                                                                         commitment=commitment).balance
+                account_infos = self._internal_client.resolve_token_accounts(public_key, True)
+                if account_infos:
+                    return account_infos[0].balance
+
             raise e
 
     def resolve_token_accounts(self, public_key: PublicKey) -> List[PublicKey]:
-        return self._token_account_resolver.resolve_token_accounts(public_key)
+        account_infos = self._internal_client.resolve_token_accounts(public_key, False)
+        return [a.account_id for a in account_infos]
+
+    def merge_token_accounts(
+        self, private_key: PrivateKey, create_associated_account: bool, commitment: Optional[Commitment] = None,
+        subsidizer: Optional[PrivateKey] = None,
+    ) -> Optional[bytes]:
+        commitment = commitment if commitment else self._default_commitment
+
+        existing_accounts = self._internal_client.resolve_token_accounts(private_key.public_key, True)
+        if len(existing_accounts) == 0 or (len(existing_accounts) == 1 and not create_associated_account):
+            return None
+
+        dest = existing_accounts[0].account_id
+        instructions = []
+        signers = [private_key]
+
+        config = self._internal_client.get_service_config()
+        if not config.subsidizer_account.value and not subsidizer:
+            raise NoSubsidizerError()
+
+        if subsidizer:
+            subsidizer_id = subsidizer.public_key
+            signers.append(subsidizer)
+        else:
+            subsidizer_id = PublicKey(config.subsidizer_account.value)
+
+        if create_associated_account:
+            create_instruction, assoc = token.create_associated_token_account(
+                subsidizer_id,
+                private_key.public_key,
+                PublicKey(config.token.value),
+            )
+            if existing_accounts[0].account_id.raw != assoc.raw:
+                instructions.append(create_instruction)
+                instructions.append(token.set_authority(
+                    assoc,
+                    private_key.public_key,
+                    token.AuthorityType.CLOSE_ACCOUNT,
+                    new_authority=subsidizer_id))
+                dest = assoc
+            elif len(existing_accounts) == 1:
+                return None
+
+        for existing_account in existing_accounts:
+            if existing_account.account_id == dest:
+                continue
+
+            instructions.append(token.transfer(
+                existing_account.account_id,
+                dest,
+                private_key.public_key,
+                existing_account.balance,
+            ))
+
+            # If no close authority is set, it likely means we don't know it, and can't make any assumptions
+            if not existing_account.close_authority:
+                continue
+
+            # If the subsidizer is the close authority, we can include the close instruction as they will be ok with
+            # signing for it
+            #
+            # Alternatively, if we're the close authority, we are signing it.
+            should_close = False
+            for a in [private_key.public_key, subsidizer_id]:
+                if existing_account.close_authority == a:
+                    should_close = True
+                    break
+
+            if should_close:
+                instructions.append(token.close_account(
+                    existing_account.account_id,
+                    existing_account.close_authority,
+                    existing_account.close_authority,
+                ))
+
+        transaction = solana.Transaction.new(subsidizer_id, instructions)
+
+        result = self._sign_and_submit_solana_tx(signers, transaction, commitment)
+        if result.errors and result.errors.tx_error:
+            raise result.errors.tx_error
+
+        return result.tx_id
+
+    def get_transaction(self, tx_id: bytes, commitment: Optional[Commitment] = None) -> TransactionData:
+        commitment = commitment if commitment else self._default_commitment
+        return self._internal_client.get_transaction(tx_id, commitment)
 
     def submit_payment(
         self, payment: Payment, commitment: Optional[Commitment] = None,
         sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
         dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
+        sender_create: Optional[bool] = False,
     ) -> bytes:
         if payment.invoice and self._app_index <= 0:
             raise ValueError('cannot submit a payment with an invoice without an app index')
 
         commitment = commitment if commitment else self._default_commitment
         result = self._resolve_and_submit_solana_payment(
-            payment, commitment, sender_resolution=sender_resolution,
-            dest_resolution=dest_resolution
+            payment, commitment, sender_resolution, dest_resolution, sender_create,
         )
 
         if result.errors:
@@ -338,8 +420,8 @@ class Client(BaseClient):
     ) -> EarnBatchResult:
         if len(batch.earns) == 0:
             raise ValueError('earn batch must contain at least 1 earn')
-        if len(batch.earns) > 15:
-            raise ValueError('earn batch must not contain more than 15 earns')
+        if len(batch.earns) > _MAX_BATCH_SIZE:
+            raise ValueError(f'earn batch must not contain more than {_MAX_BATCH_SIZE} earns')
 
         invoices = [earn.invoice for earn in batch.earns if earn.invoice]
         if invoices:
@@ -350,12 +432,12 @@ class Client(BaseClient):
             if batch.memo:
                 raise ValueError('Cannot use both text memo and invoices')
 
-        service_config = self._internal_client.get_service_config()
-        if not service_config.subsidizer_account.value and not batch.subsidizer:
+        config = self._internal_client.get_service_config()
+        if not config.subsidizer_account.value and not batch.subsidizer:
             raise NoSubsidizerError()
 
         commitment = commitment if commitment else self._default_commitment
-        submit_result = self._resolve_and_submit_solana_earn_batch(batch, service_config, commitment=commitment,
+        submit_result = self._resolve_and_submit_solana_earn_batch(batch, config, commitment=commitment,
                                                                    sender_resolution=sender_resolution,
                                                                    dest_resolution=dest_resolution)
 
@@ -389,80 +471,114 @@ class Client(BaseClient):
         self._grpc_channel.close()
 
     def _create_solana_account(
-        self, private_key: PrivateKey, commitment: Commitment, min_balance: int, subsidizer: Optional[PrivateKey] = None
+        self, private_key: PrivateKey, commitment: Commitment, subsidizer: Optional[PrivateKey] = None
     ):
-        token_account_key = _generate_token_account(private_key)
-
-        service_config_resp = self._internal_client.get_service_config()
-        if not service_config_resp.subsidizer_account.value and not subsidizer:
+        config = self._internal_client.get_service_config()
+        if not config.subsidizer_account.value and not subsidizer:
             raise NoSubsidizerError()
 
         subsidizer_id = (subsidizer.public_key if subsidizer else
-                         PublicKey(service_config_resp.subsidizer_account.value))
+                         PublicKey(config.subsidizer_account.value))
+
+        instructions = []
+        if self._app_index > 0:
+            m = AgoraMemo.new(1, TransactionType.NONE, self._app_index, b'')
+            instructions.append(memo.memo_instruction(base64.b64encode(m.val).decode('utf-8')))
+
+        create_instruction, addr = token.create_associated_token_account(
+            subsidizer_id,
+            private_key.public_key,
+            PublicKey(config.token.value))
+        instructions.append(create_instruction)
+        instructions.append(token.set_authority(
+            addr,
+            private_key.public_key,
+            token.AuthorityType.CLOSE_ACCOUNT,
+            new_authority=subsidizer_id,
+        ))
+        transaction = solana.Transaction.new(subsidizer_id, instructions)
 
         recent_blockhash_resp = self._internal_client.get_recent_blockhash()
-        token_program = PublicKey(service_config_resp.token_program.value)
-        transaction = solana.Transaction.new(
-            subsidizer_id,
-            [
-                system.create_account(
-                    subsidizer_id,
-                    token_account_key.public_key,
-                    token_program,
-                    min_balance,
-                    token.ACCOUNT_SIZE,
-                ),
-                token.initialize_account(
-                    token_account_key.public_key,
-                    PublicKey(service_config_resp.token.value),
-                    private_key.public_key,
-                    token_program,
-                ),
-                token.set_authority(
-                    token_account_key.public_key,
-                    private_key.public_key,
-                    token.AuthorityType.CloseAccount,
-                    token_program,
-                    new_authority=subsidizer_id,
-                )
-            ]
-        )
         transaction.set_blockhash(recent_blockhash_resp.blockhash.value)
-        transaction.sign([private_key, token_account_key])
+        transaction.sign([private_key])
         if subsidizer:
             transaction.sign([subsidizer])
 
         self._internal_client.create_solana_account(transaction, commitment)
 
     def _resolve_and_submit_solana_payment(
-        self, payment: Payment, commitment: Commitment,
-        sender_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
-        dest_resolution: Optional[AccountResolution] = AccountResolution.PREFERRED,
+        self, payment: Payment, commitment: Commitment, sender_resolution: AccountResolution,
+        dest_resolution: AccountResolution, sender_create: bool
     ) -> SubmitTransactionResult:
-        service_config = self._internal_client.get_service_config()
-        if not service_config.subsidizer_account.value and not payment.subsidizer:
+        config = self._internal_client.get_service_config()
+        if not config.subsidizer_account.value and not payment.subsidizer:
             raise NoSubsidizerError()
 
-        result = self._submit_solana_payment_tx(payment, service_config, commitment)
+        subsidizer_id = (payment.subsidizer.public_key if payment.subsidizer else
+                         PublicKey(config.subsidizer_account.value))
+
+        result = self._submit_solana_payment_tx(payment, config, commitment)
         if result.errors and isinstance(result.errors.tx_error, AccountNotFoundError):
-            transfer_sender = None
+            transfer_source = None
+            create_instructions = []
+            create_signer = None
             resubmit = False
 
             if sender_resolution == AccountResolution.PREFERRED:
-                sender_token_accounts = self._token_account_resolver.resolve_token_accounts(payment.sender.public_key)
-                if sender_token_accounts:
-                    transfer_sender = sender_token_accounts[0]
+                token_account_infos = self._internal_client.resolve_token_accounts(payment.sender.public_key, False)
+                if token_account_infos:
+                    transfer_source = token_account_infos[0].account_id
                     resubmit = True
 
             if dest_resolution == AccountResolution.PREFERRED:
-                dest_token_accounts = self._token_account_resolver.resolve_token_accounts(payment.destination)
-                if dest_token_accounts:
-                    payment.destination = dest_token_accounts[0]
+                token_account_infos = self._internal_client.resolve_token_accounts(payment.destination, False)
+                if token_account_infos:
+                    payment.destination = token_account_infos[0].account_id
+                    resubmit = True
+                elif sender_create:
+                    lamports = self._internal_client.get_minimum_balance_for_rent_exception()
+                    temp_key = PrivateKey.random()
+
+                    original_dest = payment.destination
+                    payment.destination = temp_key.public_key
+                    create_instructions = [
+                        system.create_account(
+                            subsidizer_id,
+                            temp_key.public_key,
+                            token.PROGRAM_KEY,
+                            lamports,
+                            token.ACCOUNT_SIZE,
+                        ),
+                        token.initialize_account(
+                            temp_key.public_key,
+                            PublicKey(config.token.value),
+                            temp_key.public_key,
+                        ),
+                        token.set_authority(
+                            temp_key.public_key,
+                            temp_key.public_key,
+                            token.AuthorityType.CLOSE_ACCOUNT,
+                            new_authority=subsidizer_id,
+                        ),
+                        token.set_authority(
+                            temp_key.public_key,
+                            temp_key.public_key,
+                            token.AuthorityType.ACCOUNT_HOLDER,
+                            new_authority=original_dest,
+                        ),
+                    ]
+                    create_signer = temp_key
                     resubmit = True
 
             if resubmit:
-                result = self._submit_solana_payment_tx(payment, service_config, commitment,
-                                                        transfer_sender=transfer_sender)
+                result = self._submit_solana_payment_tx(
+                    payment,
+                    config,
+                    commitment,
+                    transfer_source=transfer_source,
+                    create_instructions=create_instructions,
+                    create_signer=create_signer,
+                )
 
         return result
 
@@ -474,33 +590,33 @@ class Client(BaseClient):
         result = self._submit_solana_earn_batch_tx(batch, service_config, commitment)
 
         if result.errors and isinstance(result.errors.tx_error, AccountNotFoundError):
-            transfer_sender = None
+            transfer_source = None
             resubmit = False
 
             if sender_resolution == AccountResolution.PREFERRED:
-                sender_token_accounts = self._token_account_resolver.resolve_token_accounts(batch.sender.public_key)
-                if sender_token_accounts:
-                    transfer_sender = sender_token_accounts[0]
+                token_account_infos = self._internal_client.resolve_token_accounts(batch.sender.public_key, False)
+                if token_account_infos:
+                    transfer_source = token_account_infos[0].account_id
                     resubmit = True
 
             if dest_resolution == AccountResolution.PREFERRED:
                 for earn in batch.earns:
-                    dest_token_accounts = self._token_account_resolver.resolve_token_accounts(earn.destination)
-                    if dest_token_accounts:
-                        earn.destination = dest_token_accounts[0]
+                    token_account_infos = self._internal_client.resolve_token_accounts(earn.destination, False)
+                    if token_account_infos:
+                        earn.destination = token_account_infos[0].account_id
                         resubmit = True
 
             if resubmit:
                 result = self._submit_solana_earn_batch_tx(batch, service_config, commitment,
-                                                           transfer_sender=transfer_sender)
+                                                           transfer_sender=transfer_source)
 
         return result
 
     def _submit_solana_payment_tx(
         self, payment: Payment, service_config: tx_pb.GetServiceConfigResponse, commitment: Commitment,
-        transfer_sender: Optional[PublicKey] = None
+        transfer_source: Optional[PublicKey] = None, create_instructions: List[solana.Instruction] = None,
+        create_signer: Optional[PrivateKey] = None,
     ) -> SubmitTransactionResult:
-        token_program = PublicKey(service_config.token_program.value)
         subsidizer_id = (payment.subsidizer.public_key if payment.subsidizer
                          else PublicKey(service_config.subsidizer_account.value))
 
@@ -515,15 +631,25 @@ class Client(BaseClient):
             m = AgoraMemo.new(1, payment.tx_type, self._app_index, fk)
             instructions = [memo.memo_instruction(base64.b64encode(m.val).decode('utf-8'))]
 
-        sender = transfer_sender if transfer_sender else payment.sender.public_key
-        instructions.append(token.transfer(sender, payment.destination, payment.sender.public_key,
-                                           payment.quarks, token_program))
+        if create_instructions:
+            instructions += create_instructions
+
+        sender = transfer_source if transfer_source else payment.sender.public_key
+        instructions.append(token.transfer(
+            sender,
+            payment.destination,
+            payment.sender.public_key,
+            payment.quarks,
+        ))
 
         tx = solana.Transaction.new(subsidizer_id, instructions)
         if payment.subsidizer:
             signers = [payment.subsidizer, payment.sender]
         else:
             signers = [payment.sender]
+
+        if create_signer:
+            signers.append(create_signer)
 
         return self._sign_and_submit_solana_tx(signers, tx, commitment, invoice_list=invoice_list,
                                                dedupe_id=payment.dedupe_id)
@@ -532,14 +658,17 @@ class Client(BaseClient):
         self, batch: EarnBatch, service_config: tx_pb.GetServiceConfigResponse, commitment: Commitment,
         transfer_sender: Optional[PublicKey] = None,
     ) -> SubmitTransactionResult:
-        token_program = PublicKey(service_config.token_program.value)
         subsidizer_id = (batch.subsidizer.public_key if batch.subsidizer
                          else PublicKey(service_config.subsidizer_account.value))
 
         transfer_sender = transfer_sender if transfer_sender else batch.sender.public_key
         instructions = [
-            token.transfer(transfer_sender, earn.destination, batch.sender.public_key, earn.quarks, token_program)
-            for earn in batch.earns]
+            token.transfer(
+                transfer_sender,
+                earn.destination,
+                batch.sender.public_key,
+                earn.quarks,
+            ) for earn in batch.earns]
 
         invoices = [earn.invoice for earn in batch.earns if earn.invoice]
         invoice_list = InvoiceList(invoices) if invoices else None
@@ -562,15 +691,31 @@ class Client(BaseClient):
     def _sign_and_submit_solana_tx(
         self, signers: List[PrivateKey], tx: solana.Transaction, commitment: Commitment,
         invoice_list: Optional[InvoiceList] = None, dedupe_id: Optional[bytes] = None,
-    ):
-        def _get_blockhash_and_submit():
+    ) -> SubmitTransactionResult:
+        def _get_blockhash_and_submit() -> SubmitTransactionResult:
             recent_blockhash = self._internal_client.get_recent_blockhash().blockhash.value
             tx.set_blockhash(recent_blockhash)
             tx.sign(signers)
 
+            # If the transaction isn't signed by the subsidizer, request a signature.
+            remote_signed = False
+            if tx.signatures[0] == bytes(solana.SIGNATURE_LENGTH):
+                sign_result = self._internal_client.sign_transaction(tx, invoice_list)
+                if sign_result.invoice_errors:
+                    return SubmitTransactionResult(sign_result.tx_id, sign_result.invoice_errors)
+
+                if not sign_result.tx_id:
+                    raise PayerRequiredError()
+
+                remote_signed = True
+                tx.signatures[0] = sign_result.tx_id
+
             result = self._internal_client.submit_solana_transaction(tx, invoice_list=invoice_list,
                                                                      commitment=commitment, dedupe_id=dedupe_id)
             if result.errors and isinstance(result.errors.tx_error, BadNonceError):
+                if remote_signed:
+                    tx.signatures[0] = bytes(solana.SIGNATURE_LENGTH)
+
                 raise result.errors.tx_error
 
             return result

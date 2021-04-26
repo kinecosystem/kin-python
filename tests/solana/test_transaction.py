@@ -129,7 +129,7 @@ class TestTransaction:
 
         message = tx.message.marshal()
         for idx, key in enumerate([payer, keys[0], keys[3], keys[1]]):
-            assert key.public_key.verify(message, tx.signatures[idx])
+            key.public_key.verify(message, tx.signatures[idx])
 
         expected_keys = [payer, keys[0], keys[3], keys[1], keys[2], program]
         for idx, account in enumerate(expected_keys):
@@ -168,9 +168,9 @@ class TestTransaction:
 
         message = tx.message.marshal()
 
-        assert payer.public_key.verify(message, tx.signatures[0])
-        assert keys[3].public_key.verify(message, tx.signatures[1])
-        assert keys[0].public_key.verify(message, tx.signatures[2])
+        payer.public_key.verify(message, tx.signatures[0])
+        keys[3].public_key.verify(message, tx.signatures[1])
+        keys[0].public_key.verify(message, tx.signatures[2])
 
         expected_keys = [payer, keys[3], keys[0], keys[2], keys[1], program]
         for idx, key in enumerate(expected_keys):
@@ -235,7 +235,7 @@ class TestTransaction:
 
         message = tx.message.marshal()
         for idx, key in enumerate([payer, keys[0], keys[1], keys[3], keys[4]]):
-            assert key.public_key.verify(message, tx.signatures[idx])
+            key.public_key.verify(message, tx.signatures[idx])
 
         expected_keys = [payer, keys[0], keys[1], keys[3], keys[4], keys[2], keys[5], program, program2]
         for idx, account in enumerate(expected_keys):

@@ -131,7 +131,7 @@ class TestTransaction:
         source, dest, token_program = [key.public_key for key in generate_keys(3)]
         tx = Transaction.new(PrivateKey.random().public_key, [
             memo_instruction('somememo'),
-            transfer(source, dest, PrivateKey.random().public_key, 20, token_program),
+            transfer(source, dest, PrivateKey.random().public_key, 20),
         ])
 
         history_item = tx_pb.HistoryItem(
@@ -181,8 +181,8 @@ class TestTransaction:
 
         tx = Transaction.new(PrivateKey.random().public_key, [
             memo_instruction(base64.b64encode(agora_memo.val).decode('utf-8')),
-            transfer(acc1, acc2, PrivateKey.random().public_key, 10, token_program),
-            transfer(acc2, acc1, PrivateKey.random().public_key, 15, token_program),
+            transfer(acc1, acc2, PrivateKey.random().public_key, 10),
+            transfer(acc2, acc1, PrivateKey.random().public_key, 15),
         ])
 
         history_item = tx_pb.HistoryItem(

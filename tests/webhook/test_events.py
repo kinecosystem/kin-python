@@ -15,7 +15,6 @@ class TestSolanaData:
     def test_from_json(self):
         memo = AgoraMemo.new(1, TransactionType.P2P, 0, b'somefk')
         keys = [key.public_key for key in generate_keys(4)]
-        token_program = keys[3]
         tx = solana.Transaction.new(
             keys[0],
             [
@@ -25,7 +24,6 @@ class TestSolanaData:
                     keys[2],
                     keys[3],
                     20,
-                    token_program,
                 ),
             ]
         )
@@ -46,7 +44,6 @@ class TestTransactionEvent:
     def test_from_json_full_kin_4(self):
         memo = AgoraMemo.new(1, TransactionType.P2P, 0, b'somefk')
         keys = [key.public_key for key in generate_keys(4)]
-        token_program = keys[3]
         tx = solana.Transaction.new(
             keys[0],
             [
@@ -56,7 +53,6 @@ class TestTransactionEvent:
                     keys[2],
                     keys[3],
                     20,
-                    token_program,
                 ),
             ]
         )
@@ -112,7 +108,7 @@ class TestEvent:
         assert not event.transaction_event
 
     def test_from_json_with_tx_event(self):
-        keys = [key.public_key for key in generate_keys(4)]
+        keys = [key.public_key for key in generate_keys(3)]
         tx = solana.Transaction.new(
             keys[0],
             [
@@ -121,7 +117,6 @@ class TestEvent:
                     keys[1],
                     keys[2],
                     20,
-                    keys[3],
                 ),
             ]
         )

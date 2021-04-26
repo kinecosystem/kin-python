@@ -148,8 +148,8 @@ class Transaction:
         instructions = ''.join([
             f'    {i}:\n'
             f'      ProgramIndex: {instruction.program_index}\n'
-            f'      Accounts: {instruction.accounts}'
-            f'      Data: {instruction.data}' for i, instruction in enumerate(self.message.instructions)
+            f'      Accounts: {instruction.accounts}\n'
+            f'      Data: {instruction.data}\n' for i, instruction in enumerate(self.message.instructions)
         ])
 
         return f'Signatures:\n{signatures}' \

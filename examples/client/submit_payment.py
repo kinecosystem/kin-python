@@ -1,5 +1,7 @@
 import argparse
 
+import base58
+
 from agora.client import Client, Environment
 from agora.error import Error, TransactionErrors
 from agora.keys import PrivateKey, PublicKey
@@ -19,8 +21,8 @@ dest = PublicKey.from_base58(args['destination'])
 # Send a payment of 1 Kin
 payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks('1'))
 try:
-    tx_hash = client.submit_payment(p)
-    print(f'transaction successfully submitted with hash: {tx_hash.hex()}')
+    tx_id = client.submit_payment(p)
+    print(f'transaction successfully submitted with hash: {base58.b58encode(tx_id)}')
 except Error as e:
     print(f'transaction failed: {repr(e)}')
     if isinstance(e, TransactionErrors):
@@ -32,8 +34,8 @@ except Error as e:
 payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks('1'),
                   memo='1-test')
 try:
-    tx_hash = client.submit_payment(p)
-    print(f'transaction successfully submitted with hash: {tx_hash.hex()}')
+    tx_id = client.submit_payment(p)
+    print(f'transaction successfully submitted with hash: {base58.b58encode(tx_id)}')
 except Error as e:
     print(f'transaction failed: {repr(e)}')
     if isinstance(e, TransactionErrors):
@@ -47,8 +49,8 @@ invoice = Invoice([LineItem('Test Payment', 100000, description='This is a descr
 payment = Payment(source, dest, TransactionType.EARN, kin_to_quarks('1'),
                   invoice=invoice)
 try:
-    tx_hash = client.submit_payment(p)
-    print(f'transaction successfully submitted with hash: {tx_hash.hex()}')
+    tx_id = client.submit_payment(p)
+    print(f'transaction successfully submitted with hash: {base58.b58encode(tx_id)}')
 except Error as e:
     print(f'transaction failed: {repr(e)}')
     if isinstance(e, TransactionErrors):
