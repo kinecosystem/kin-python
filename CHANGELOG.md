@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.7.0](https://github.com/kinecosystem/kin-python/releases/tag/0.7.0)
 - Remove Stellar (Kin 2 & Kin 3) support
     - Only Kin 4 and v4 Agora APIs are supported
     - `Client.__init__` no longer accepts `kin_version`, `whitelist_key` and `desired_kin_version`
