@@ -726,9 +726,12 @@ class TestInternalClientV4:
 
     @staticmethod
     def _assert_metadata(md: Tuple[Tuple, ...]):
-        assert len(md) == 3
+        assert len(md) >= 3
         assert md[0] == user_agent(VERSION)
         assert md[1] == ('kin-version', '4')
+        if len(md) == 4:
+            assert md[2] == ('app-index', '1')
+
 
     @staticmethod
     def _gen_tx():

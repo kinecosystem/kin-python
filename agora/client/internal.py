@@ -46,7 +46,7 @@ class InternalClient:
         """
 
     def __init__(
-        self, grpc_channel: grpc.Channel, retry_strategies: List[Strategy],
+        self, grpc_channel: grpc.Channel, retry_strategies: List[Strategy], app_index: int = 0,
     ):
         self._account_stub_v4 = account_pb_grpc.AccountStub(grpc_channel)
         self._transaction_stub_v4 = tx_pb_grpc.TransactionStub(grpc_channel)
@@ -54,10 +54,17 @@ class InternalClient:
 
         self._retry_strategies = retry_strategies
 
-        self._metadata = (
-            user_agent(VERSION),
-            ('kin-version', "4"),
-        )
+        if app_index > 0:
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', "4"),
+                ('app-index', str(app_index)),
+            )
+        else:
+            self._metadata = (
+                user_agent(VERSION),
+                ('kin-version', "4"),
+            )
 
         # Currently only service config is cached, so limit to 1 entry
         self._response_cache = LRUCache(300, 1)

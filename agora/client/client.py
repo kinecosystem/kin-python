@@ -267,7 +267,7 @@ class Client(BaseClient):
             LimitStrategy(retry_config.max_nonce_refreshes + 1)
         ]
 
-        self._internal_client = InternalClient(self._grpc_channel, self._internal_retry_strategies)
+        self._internal_client = InternalClient(self._grpc_channel, self._internal_retry_strategies, self._app_index)
 
         self._default_commitment = default_commitment
 

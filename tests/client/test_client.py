@@ -1506,7 +1506,7 @@ class TestAgoraClient:
 
     @staticmethod
     def _assert_kin_4_md(md: Tuple[Tuple, ...]):
-        assert len(md) == 3
+        assert len(md) >= 3
         assert md[0] == user_agent(VERSION)
         assert md[1] == ('kin-version', '4')
 
