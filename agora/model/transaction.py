@@ -94,6 +94,7 @@ class TransactionData:
                 try:
                     agora_memo = AgoraMemo.from_b64_string(memo_data)
                     tx_type = agora_memo.tx_type()
+                    memo = agora_memo
                 except ValueError:
                     memo = memo_data
             tx_errors = TransactionErrors.from_solana_tx(solana_tx, item.transaction_error, item.transaction_id.value)
